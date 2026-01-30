@@ -2,6 +2,7 @@
 Static GUI prototype for SmuggyConverter.
 Built with PySide6. No download/conversion functionality is wired yet.
 """
+from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
@@ -18,13 +19,22 @@ from PySide6.QtWidgets import (
     QStackedLayout,
     QVBoxLayout,
     QWidget,
+    QSystemTrayIcon
 )
+
+ICON_PATH = "logo.png"
+ICO_ICON_PATH = "icon.ico"
+
+icon_path = Path(__file__).with_name(ICON_PATH)
+ico_icon_path = Path(__file__).with_name(ICO_ICON_PATH)
 
 
 class ConverterWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("SmuggyConverter")
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1180, 760)
         self.setMinimumSize(960, 600)
         self._apply_theme()
@@ -204,6 +214,8 @@ def main() -> None:
     app = QApplication([])
     window = ConverterWindow()
     window.showMaximized()
+    tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), parent=None)
+    tray_icon.show()
     app.exec()
 
 
