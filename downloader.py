@@ -1,14 +1,14 @@
 import yt_dlp
 import ffmpeg
 from ffmpeg import Error as FFmpegError
-from .file_utils import generate_uuid_filename, get_media_path, cleanup_file
+from file_utils import generate_uuid_filename, get_media_path, cleanup_file
 # from .job_manager import update_job_progress
 import os
 import json
 from datetime import datetime, timezone
 import re
 
-from .file_utils import MEDIA_DIR
+from file_utils import MEDIA_DIR
 
 METADATA_EXT = ".metadata.json"
 
@@ -77,6 +77,7 @@ def download_and_convert(url, fmt, quality):
                     raise Exception(f"ffmpeg error: {fe.stderr.decode('utf-8', errors='ignore')}")
                 cleanup_file(downloaded_path)
                 write_metadata(filename)
+                print(f"Converted and saved: {filename}")
                 return filename
             elif fmt == "mp4":
                 try:
@@ -126,6 +127,7 @@ def download_playlist(url, fmt, quality, job_id):
         except Exception as e:
             results.append({"url": vurl, "error": str(e), "status": "failed"})
         progress = int(((idx + 1) / total) * 100) if total else 100
+        return progress
         # update_job_progress(job_id, progress, results=results)
     # update_job_progress(job_id, 100, results=results)
 

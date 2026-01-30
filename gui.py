@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
+from downloader import download_and_convert
+
 ICON_PATH = "logo.png"
 ICO_ICON_PATH = "icon.ico"
 
@@ -81,8 +83,8 @@ class ConverterWindow(QMainWindow):
 
         root.addItem(QSpacerItem(0, 12))
         root.addLayout(self._hero())
-        root.addItem(QSpacerItem(0, 12))
-        root.addLayout(self._badges())
+        # root.addItem(QSpacerItem(0, 12))
+        # root.addLayout(self._badges())
         root.addItem(QSpacerItem(0, 12))
         root.addLayout(self._mode_switcher())
         root.addItem(QSpacerItem(0, 4))
@@ -115,29 +117,29 @@ class ConverterWindow(QMainWindow):
         layout.addWidget(subtitle)
         return layout
 
-    def _badges(self) -> QHBoxLayout:
-        layout = QHBoxLayout()
-        layout.setSpacing(24)
-        layout.addStretch()
-        for text in ["Lightning Fast", "100% Safe", "No Registration"]:
-            pill = self._badge(text)
-            layout.addWidget(pill)
-        layout.addStretch()
-        return layout
+    # def _badges(self) -> QHBoxLayout:
+    #     layout = QHBoxLayout()
+    #     layout.setSpacing(24)
+    #     layout.addStretch()
+    #     for text in ["Lightning Fast", "100% Safe", "No Registration"]:
+    #         pill = self._badge(text)
+    #         layout.addWidget(pill)
+    #     layout.addStretch()
+    #     return layout
 
-    def _badge(self, text: str) -> QWidget:
-        pill = QWidget()
-        pill.setObjectName("card")
-        pill_layout = QHBoxLayout(pill)
-        pill_layout.setContentsMargins(14, 8, 14, 8)
-        icon = QLabel("*")  # Minimal ASCII marker; replace with icon later if desired.
-        icon.setObjectName("pillText")
-        label = QLabel(text)
-        label.setObjectName("pillText")
-        pill_layout.addWidget(icon)
-        pill_layout.addSpacing(6)
-        pill_layout.addWidget(label)
-        return pill
+    # def _badge(self, text: str) -> QWidget:
+    #     pill = QWidget()
+    #     pill.setObjectName("card")
+    #     pill_layout = QHBoxLayout(pill)
+    #     pill_layout.setContentsMargins(14, 8, 14, 8)
+    #     icon = QLabel("*")  # Minimal ASCII marker; replace with icon later if desired.
+    #     icon.setObjectName("pillText")
+    #     label = QLabel(text)
+    #     label.setObjectName("pillText")
+    #     pill_layout.addWidget(icon)
+    #     pill_layout.addSpacing(6)
+    #     pill_layout.addWidget(label)
+    #     return pill
 
     def _mode_switcher(self) -> QVBoxLayout:
         layout = QVBoxLayout()
@@ -183,28 +185,28 @@ class ConverterWindow(QMainWindow):
         output_row.addWidget(browse_btn)
 
         url_label = QLabel("YouTube Video URL:")
-        url_input = QLineEdit()
-        url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
 
         format_label = QLabel("Output Format:")
-        format_combo = QComboBox()
+        self.format_combo = QComboBox()
         # format_combo.addItems(["MP3 (Audio)", "MP4 (Video)"])
-        format_combo.addItems(["MP3 (Audio)"])
+        self.format_combo.addItems(["MP3 (Audio)"])
 
         quality_label = QLabel("Audio Quality:")
-        quality_combo = QComboBox()
-        quality_combo.addItems(["320 kbps (Highest)", "256 kbps", "192 kbps", "128 kbps"])
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(["320 kbps (Highest)", "256 kbps", "192 kbps"])
 
         form_grid = QVBoxLayout()
         form_grid.setSpacing(10)
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
         form_grid.addWidget(url_label)
-        form_grid.addWidget(url_input)
+        form_grid.addWidget(self.url_input)
         form_grid.addWidget(format_label)
-        form_grid.addWidget(format_combo)
+        form_grid.addWidget(self.format_combo)
         form_grid.addWidget(quality_label)
-        form_grid.addWidget(quality_combo)
+        form_grid.addWidget(self.quality_combo)
 
         card_layout.addLayout(form_grid)
         return card
@@ -217,10 +219,11 @@ class ConverterWindow(QMainWindow):
 
     def _footer(self) -> QVBoxLayout:
         layout = QVBoxLayout()
-        convert = QPushButton("Convert & Download")
-        convert.setObjectName("convert")
+        self.convert_btn = QPushButton("Convert and Download")
+        self.convert_btn.setObjectName("convert")
+        self.convert_btn.clicked.connect(self._on_convert_clicked)
         layout.addSpacing(4)
-        layout.addWidget(convert)
+        layout.addWidget(self.convert_btn)
         layout.addSpacing(8)
 
         note = QLabel("Keep SmuggyConverter open during download to avoid interruptions")
@@ -228,6 +231,16 @@ class ConverterWindow(QMainWindow):
         note.setObjectName("subtitle")
         layout.addWidget(note)
         return layout
+    
+    def _on_convert_clicked(self) -> None:
+        url = self.url_input.text().strip()
+        fmt_text = self.format_combo.currentText().lower()
+        fmt = "mp3" if "mp3" in fmt_text else "mp4"
+        quality_text = self.quality_combo.currentText()
+        digits = "".join(ch for ch in quality_text if ch.isdigit())
+        quality = int(digits) if digits else None
+        file = download_and_convert(url, fmt, quality)
+        return file
 
 
 def main() -> None:
