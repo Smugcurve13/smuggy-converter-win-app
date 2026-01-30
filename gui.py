@@ -3,6 +3,7 @@ Static GUI prototype for SmuggyConverter.
 Built with PySide6. No download/conversion functionality is wired yet.
 """
 from pathlib import Path
+import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
@@ -24,13 +25,17 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
-from downloader import download_and_convert
+from downloader import download_and_convert, download_playlist
 
 ICON_PATH = "logo.png"
 ICO_ICON_PATH = "icon.ico"
 
 icon_path = Path(__file__).with_name(ICON_PATH)
 ico_icon_path = Path(__file__).with_name(ICO_ICON_PATH)
+
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class ConverterWindow(QMainWindow):
     def __init__(self) -> None:
@@ -40,7 +45,7 @@ class ConverterWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1180, 760)
         self.setMinimumSize(960, 600)
-        self.output_dir = None
+        self.output_dir = Path.cwd()
         self._apply_theme()
         self._build_ui()
 
@@ -231,16 +236,28 @@ class ConverterWindow(QMainWindow):
         note.setObjectName("subtitle")
         layout.addWidget(note)
         return layout
-    
+
     def _on_convert_clicked(self) -> None:
+        checked = self.mode_group.checkedButton()
+        mode = checked.text().lower() if checked else "single"
         url = self.url_input.text().strip()
         fmt_text = self.format_combo.currentText().lower()
         fmt = "mp3" if "mp3" in fmt_text else "mp4"
         quality_text = self.quality_combo.currentText()
         digits = "".join(ch for ch in quality_text if ch.isdigit())
         quality = int(digits) if digits else None
-        file = download_and_convert(url, fmt, quality)
-        return file
+        logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
+        if "playlist" in mode:
+            return self._on_convert_playlist_clicked(url, fmt, quality)
+        return self._on_convert_mp3_clicked(url, fmt, quality)
+    
+    def _on_convert_mp3_clicked(self, url: str, fmt: str, quality: int | None) -> None:
+        logger.info("Single video conversion", extra={"url": url, "fmt": fmt, "quality": quality})
+        return download_and_convert(url, fmt, quality)
+    
+    def _on_convert_playlist_clicked(self, url: str, fmt: str, quality: int | None) -> None:
+        logger.info("Playlist conversion", extra={"url": url, "fmt": fmt, "quality": quality})
+        return download_playlist(url, fmt, quality)
 
 
 def main() -> None:

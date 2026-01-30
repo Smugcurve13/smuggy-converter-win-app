@@ -1,16 +1,20 @@
-import yt_dlp
-import ffmpeg
-from ffmpeg import Error as FFmpegError
-from file_utils import generate_uuid_filename, get_media_path, cleanup_file
-# from .job_manager import update_job_progress
-import os
 import json
-from datetime import datetime, timezone
+import logging
+import os
 import re
+from datetime import datetime, timezone
 
-from file_utils import MEDIA_DIR
+import ffmpeg
+import yt_dlp
+from ffmpeg import Error as FFmpegError
+from file_utils import cleanup_file, generate_uuid_filename, get_media_path, MEDIA_DIR
+# from .job_manager import update_job_progress
 
 METADATA_EXT = ".metadata.json"
+
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 # Write metadata with timestamp
 def write_metadata(file_id):
@@ -32,6 +36,7 @@ def sanitize_filename(title):
 
 
 def download_and_convert(url, fmt, quality):
+    logger.info("Starting download", extra={"url": url, "fmt": fmt, "quality": quality})
     ext = fmt
     ydl_info_opts = {
         "quiet": True,
@@ -42,6 +47,7 @@ def download_and_convert(url, fmt, quality):
     try:
         with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+        logger.info("Fetched info", extra={"title": info.get('title'), "ext": info.get('ext')})
         title = info.get('title', 'downloaded_file')
         safe_title = sanitize_filename(title)
         filename = f"{safe_title}.{ext}"
@@ -59,6 +65,7 @@ def download_and_convert(url, fmt, quality):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_path = ydl.prepare_filename(info)
+            logger.info("Downloaded file", extra={"downloaded_path": downloaded_path})
             # If the downloaded file is already in the target format and name, just write metadata
             if os.path.abspath(downloaded_path) == os.path.abspath(target_path):
                 write_metadata(filename)
@@ -74,10 +81,13 @@ def download_and_convert(url, fmt, quality):
                     )
                 except FFmpegError as fe:
                     cleanup_file(downloaded_path)
-                    raise Exception(f"ffmpeg error: {fe.stderr.decode('utf-8', errors='ignore')}")
+                    err = fe.stderr.decode('utf-8', errors='ignore')
+                    logger.error("FFmpeg mp3 error", extra={"error": err})
+                    raise Exception(f"ffmpeg error: {err}")
                 cleanup_file(downloaded_path)
                 write_metadata(filename)
                 print(f"Converted and saved: {filename}")
+                logger.info("MP3 conversion complete", extra={"target_path": target_path})
                 return filename
             elif fmt == "mp4":
                 try:
@@ -89,17 +99,22 @@ def download_and_convert(url, fmt, quality):
                     )
                 except FFmpegError as fe:
                     cleanup_file(downloaded_path)
-                    raise Exception(f"ffmpeg error: {fe.stderr.decode('utf-8', errors='ignore')}")
+                    err = fe.stderr.decode('utf-8', errors='ignore')
+                    logger.error("FFmpeg mp4 error", extra={"error": err})
+                    raise Exception(f"ffmpeg error: {err}")
                 cleanup_file(downloaded_path)
                 write_metadata(filename)
+                logger.info("MP4 conversion complete", extra={"target_path": target_path})
                 return filename
             else:
                 raise ValueError("Invalid format")
     except Exception as e:
-        raise Exception(f"Download/convert error: {e}")
+            logger.error("Download/convert failed", extra={"error": str(e)})
+            raise Exception(f"Download/convert error: {e}")
 
 
-def download_playlist(url, fmt, quality, job_id):
+def download_playlist(url, fmt, quality):
+    logger.info("Starting playlist download", extra={"url": url, "fmt": fmt, "quality": quality})
     ydl_opts = {
         "extract_flat": True,
         "quiet": True,
@@ -113,9 +128,11 @@ def download_playlist(url, fmt, quality, job_id):
                 for entry in info["entries"]:
                     if entry and "id" in entry:
                         video_urls.append(f"https://www.youtube.com/watch?v={entry['id']}")
+        logger.info("Playlist entries fetched", extra={"count": len(video_urls)})
     except Exception as e:
         # update_job_progress(job_id, 100, results=[{"error": f"Failed to extract playlist: {e}"}])
         print(f"Failed to extract playlist: {e}")
+        logger.error("Failed to extract playlist", extra={"error": str(e)})
         return
 
     results = []
@@ -126,8 +143,10 @@ def download_playlist(url, fmt, quality, job_id):
             results.append({"url": vurl, "file_id": file_id, "status": "success"})
         except Exception as e:
             results.append({"url": vurl, "error": str(e), "status": "failed"})
+            logger.error("Item failed", extra={"url": vurl, "error": str(e)})
         progress = int(((idx + 1) / total) * 100) if total else 100
-        return progress
+        logger.info("Playlist progress", extra={"progress": progress, "completed": idx + 1, "total": total})
+    return results
         # update_job_progress(job_id, progress, results=results)
     # update_job_progress(job_id, 100, results=results)
 
