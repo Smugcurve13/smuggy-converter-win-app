@@ -17,9 +17,12 @@ if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 # Write metadata with timestamp
-def write_metadata(file_id):
+def write_metadata(file_id, base_dir=None):
     metadata = {"timestamp": datetime.now(timezone.utc).isoformat()}
-    meta_path = os.path.join(MEDIA_DIR, file_id + METADATA_EXT)
+    target_dir = base_dir if base_dir else MEDIA_DIR
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+    meta_path = os.path.join(target_dir, file_id + METADATA_EXT)
     with open(meta_path, "w") as f:
         json.dump(metadata, f)
 
@@ -35,8 +38,11 @@ def sanitize_filename(title):
     return title[:100]
 
 
-def download_and_convert(url, fmt, quality):
+def download_and_convert(url, fmt, quality, target_dir=None):
     logger.info("Starting download", extra={"url": url, "fmt": fmt, "quality": quality})
+    base_dir = target_dir if target_dir else MEDIA_DIR
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir, exist_ok=True)
     ext = fmt
     ydl_info_opts = {
         "quiet": True,
@@ -51,10 +57,10 @@ def download_and_convert(url, fmt, quality):
         title = info.get('title', 'downloaded_file')
         safe_title = sanitize_filename(title)
         filename = f"{safe_title}.{ext}"
-        target_path = get_media_path(filename)
+        target_path = os.path.join(base_dir, filename)
         # Always download to a temp file to avoid in-place overwrite
         temp_filename = f"{safe_title}_temp.{info.get('ext', ext)}"
-        temp_path = get_media_path(temp_filename)
+        temp_path = os.path.join(base_dir, temp_filename)
         ydl_opts = {
             "outtmpl": temp_path,
             "format": "bestaudio/best" if fmt == "mp3" else "bestvideo+bestaudio/best",
@@ -85,7 +91,7 @@ def download_and_convert(url, fmt, quality):
                     logger.error("FFmpeg mp3 error", extra={"error": err})
                     raise Exception(f"ffmpeg error: {err}")
                 cleanup_file(downloaded_path)
-                write_metadata(filename)
+                write_metadata(filename, base_dir)
                 print(f"Converted and saved: {filename}")
                 logger.info("MP3 conversion complete", extra={"target_path": target_path})
                 return filename
@@ -103,7 +109,7 @@ def download_and_convert(url, fmt, quality):
                     logger.error("FFmpeg mp4 error", extra={"error": err})
                     raise Exception(f"ffmpeg error: {err}")
                 cleanup_file(downloaded_path)
-                write_metadata(filename)
+                write_metadata(filename, base_dir)
                 logger.info("MP4 conversion complete", extra={"target_path": target_path})
                 return filename
             else:
@@ -121,9 +127,11 @@ def download_playlist(url, fmt, quality):
         "ignoreerrors": True,
     }
     video_urls = []
+    playlist_title = "playlist"
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            playlist_title = info.get("title", playlist_title)
             if "entries" in info:
                 for entry in info["entries"]:
                     if entry and "id" in entry:
@@ -135,11 +143,16 @@ def download_playlist(url, fmt, quality):
         logger.error("Failed to extract playlist", extra={"error": str(e)})
         return
 
+    playlist_safe = sanitize_filename(playlist_title)
+    playlist_dir = os.path.join(MEDIA_DIR, playlist_safe)
+    if not os.path.exists(playlist_dir):
+        os.makedirs(playlist_dir, exist_ok=True)
+
     results = []
     total = len(video_urls)
     for idx, vurl in enumerate(video_urls):
         try:
-            file_id = download_and_convert(vurl, fmt, quality)
+            file_id = download_and_convert(vurl, fmt, quality, target_dir=playlist_dir)
             results.append({"url": vurl, "file_id": file_id, "status": "success"})
         except Exception as e:
             results.append({"url": vurl, "error": str(e), "status": "failed"})
