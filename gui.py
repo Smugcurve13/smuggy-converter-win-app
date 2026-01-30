@@ -5,7 +5,7 @@ Built with PySide6. No download/conversion functionality is wired yet.
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,9 +29,11 @@ from downloader import download_and_convert, download_playlist
 
 ICON_PATH = "logo.png"
 ICO_ICON_PATH = "icon.ico"
+OUTPUT_DIR_FILE = "output_dir.txt"
 
 icon_path = Path(__file__).with_name(ICON_PATH)
 ico_icon_path = Path(__file__).with_name(ICO_ICON_PATH)
+output_dir_file = Path(__file__).with_name(OUTPUT_DIR_FILE)
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -45,9 +47,17 @@ class ConverterWindow(QMainWindow):
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1180, 760)
         self.setMinimumSize(960, 600)
-        self.output_dir = Path.cwd()
+        self.output_dir: Path | None = None
+        self._load_output_dir()
         self._apply_theme()
         self._build_ui()
+        QTimer.singleShot(0, self._post_init)
+    
+    def _post_init(self):
+        if self.output_dir is None:
+            self._prompt_initial_output_dir()
+        else:
+            self.output_path_edit.setText(str(self.output_dir))
 
     def _apply_theme(self) -> None:
         # Global stylesheet keeps the dark, red-accented theme consistent.
@@ -221,6 +231,39 @@ class ConverterWindow(QMainWindow):
         if selected:
             self.output_dir = Path(selected)
             self.output_path_edit.setText(str(self.output_dir))
+            self._save_output_dir()
+
+    def _prompt_initial_output_dir(self) -> None:
+        start_dir = str(self.output_dir) if self.output_dir else str(Path.home())
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Please select a default output directory (this is a one time process)",
+            start_dir,
+        )
+        if selected:
+            self.output_dir = Path(selected)
+            self.output_path_edit.setText(str(self.output_dir))
+            self._save_output_dir()
+
+    def _load_output_dir(self) -> None:
+        if output_dir_file.exists():
+            try:
+                stored = output_dir_file.read_text(encoding="utf-8").strip()
+                if stored:
+                    candidate = Path(stored)
+                    if candidate.exists() and candidate.is_dir():
+                        self.output_dir = candidate
+                        logger.info("Loaded stored output directory", extra={"output_dir": stored})
+            except OSError:
+                pass
+
+    def _save_output_dir(self) -> None:
+        if self.output_dir:
+            try:
+                output_dir_file.write_text(str(self.output_dir), encoding="utf-8")
+                logger.info("Saved output directory", extra={"output_dir": str(self.output_dir)})
+            except OSError as exc:
+                logger.error("Failed to save output directory", extra={"error": str(exc)})
 
     def _footer(self) -> QVBoxLayout:
         layout = QVBoxLayout()
