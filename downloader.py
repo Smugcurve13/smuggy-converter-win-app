@@ -119,7 +119,7 @@ def download_and_convert(url, fmt, quality, target_dir=None):
             raise Exception(f"Download/convert error: {e}")
 
 
-def download_playlist(url, fmt, quality):
+def download_playlist(url, fmt, quality, target_dir=None):
     logger.info("Starting playlist download", extra={"url": url, "fmt": fmt, "quality": quality})
     ydl_opts = {
         "extract_flat": True,
@@ -144,7 +144,8 @@ def download_playlist(url, fmt, quality):
         return
 
     playlist_safe = sanitize_filename(playlist_title)
-    playlist_dir = os.path.join(MEDIA_DIR, playlist_safe)
+    base_dir = target_dir if target_dir else MEDIA_DIR
+    playlist_dir = os.path.join(base_dir, playlist_safe)
     if not os.path.exists(playlist_dir):
         os.makedirs(playlist_dir, exist_ok=True)
 

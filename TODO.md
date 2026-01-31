@@ -1,9 +1,10 @@
 FIXME:
-1. Download folder default not working on the first run, works after that
-2. Dialog for selecting default download folder not showing on Mac
-3. Logo not showing
-4. UI is not responsive
-5. Form label says YouTube Video URL in playlist mode (should be YouTube playlist URL)
+1. - [x] Download folder default not working on the first run, works after that
+2. - [ ] Dialog for selecting default download folder not showing on Mac
+3. - [ ] Logo not showing
+4. - [ ] UI is not responsive
+5. - [ ] Form label says YouTube Video URL in playlist mode (should be YouTube playlist URL)
+6. - [x] Add a loader to indicate conversion happening and toast success / fail msg in gui
 
 Features:
 1. Give toggle to save metadata or not (if metadata has more than just the download timestamp)

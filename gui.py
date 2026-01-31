@@ -5,8 +5,8 @@ Built with PySide6. No download/conversion functionality is wired yet.
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt,QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF
+from PySide6.QtGui import QIcon, QPainter, QPen, QColor, QConicalGradient
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -25,6 +25,59 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
 )
 
+
+class SpinnerWidget(QWidget):
+    """A custom spinning loader widget."""
+    
+    def __init__(self, parent=None, color=QColor(230, 80, 80), line_width=4):
+        super().__init__(parent)
+        self._angle = 0
+        self._color = color
+        self._line_width = line_width
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self.setFixedSize(40, 40)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+    
+    def _rotate(self):
+        self._angle = (self._angle + 10) % 360
+        self.update()
+    
+    def start(self):
+        self._timer.start(16)  # ~60 FPS
+        self.show()
+    
+    def stop(self):
+        self._timer.stop()
+        self.hide()
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Calculate the drawing area
+        side = min(self.width(), self.height())
+        margin = self._line_width + 2
+        rect = QRectF(margin, margin, side - 2 * margin, side - 2 * margin)
+        
+        # Create gradient for the arc
+        gradient = QConicalGradient(rect.center(), -self._angle)
+        gradient.setColorAt(0, self._color)
+        gradient.setColorAt(0.7, QColor(self._color.red(), self._color.green(), self._color.blue(), 50))
+        gradient.setColorAt(1, QColor(self._color.red(), self._color.green(), self._color.blue(), 0))
+        
+        # Draw the spinning arc
+        pen = QPen()
+        pen.setBrush(gradient)
+        pen.setWidth(self._line_width)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        
+        # Draw arc (270 degrees visible)
+        start_angle = int(self._angle * 16)
+        span_angle = 270 * 16
+        painter.drawArc(rect, start_angle, span_angle)
+
 from downloader import download_and_convert, download_playlist
 from config import ICON_PATH, ICO_ICON_PATH, OUTPUT_DIR_FILE
 
@@ -37,6 +90,44 @@ logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
+
+class DownloadWorker(QThread):
+    """Worker thread for downloading and converting videos."""
+    finished = Signal(bool, str, str)  # success, result_message, video_name
+    
+    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path):
+        super().__init__()
+        self.mode = mode
+        self.url = url
+        self.fmt = fmt
+        self.quality = quality
+        self.output_dir = str(output_dir)
+    
+    def run(self):
+        try:
+            import os
+            
+            if "playlist" in self.mode:
+                # Download playlist to a subfolder
+                results = download_playlist(self.url, self.fmt, self.quality, target_dir=self.output_dir)
+                # Extract playlist name - it's saved in a subdirectory
+                playlist_name = "playlist"
+                if results and len(results) > 0:
+                    # Get the most recently created directory in output_dir
+                    dirs = [d for d in os.listdir(self.output_dir) if os.path.isdir(os.path.join(self.output_dir, d))]
+                    if dirs:
+                        # Get the newest directory
+                        newest_dir = max([os.path.join(self.output_dir, d) for d in dirs], key=os.path.getmtime)
+                        playlist_name = os.path.basename(newest_dir)
+                self.finished.emit(True, f'{playlist_name} is saved', playlist_name)
+            else:
+                filename = download_and_convert(self.url, self.fmt, self.quality, target_dir=self.output_dir)
+                self.finished.emit(True, f'{filename} is saved', filename)
+        except Exception as e:
+            logger.error("Download failed", extra={"error": str(e)})
+            self.finished.emit(False, "Failure, please try again later", "")
+
+
 class ConverterWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -44,11 +135,14 @@ class ConverterWindow(QMainWindow):
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1180, 760)
+        self.original_button_text = "Convert and Download"
         self.setMinimumSize(960, 600)
         self.output_dir: Path | None = None
         self._load_output_dir()
         self._apply_theme()
         self._build_ui()
+        self._init_spinner()
+        self.worker = None
         QTimer.singleShot(0, self._post_init)
     
     def _post_init(self):
@@ -56,6 +150,15 @@ class ConverterWindow(QMainWindow):
             self._prompt_initial_output_dir()
         else:
             self.output_path_edit.setText(str(self.output_dir))
+    
+    def _init_spinner(self):
+        """Initialize the waiting spinner for the convert button."""
+        self.spinner = SpinnerWidget(
+            parent=self,
+            color=QColor(255, 255, 255),  # White color for visibility on red button
+            line_width=4
+        )
+        self.spinner.hide()
 
     def _apply_theme(self) -> None:
         # Global stylesheet keeps the dark, red-accented theme consistent.
@@ -158,6 +261,7 @@ class ConverterWindow(QMainWindow):
         layout = QVBoxLayout()
         label = QLabel("Choose Your Conversion Type")
         label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-size: 24px; font-weight: bold; color: #f2f3f7;")
         layout.addWidget(label)
 
         sub = QLabel("Paste any YouTube URL and select your preferred format and quality")
@@ -265,7 +369,7 @@ class ConverterWindow(QMainWindow):
 
     def _footer(self) -> QVBoxLayout:
         layout = QVBoxLayout()
-        self.convert_btn = QPushButton("Convert and Download")
+        self.convert_btn = QPushButton(self.original_button_text)
         self.convert_btn.setObjectName("convert")
         self.convert_btn.clicked.connect(self._on_convert_clicked)
         layout.addSpacing(4)
@@ -279,26 +383,97 @@ class ConverterWindow(QMainWindow):
         return layout
 
     def _on_convert_clicked(self) -> None:
+        if self.worker and self.worker.isRunning():
+            return  # Prevent multiple simultaneous downloads
+        
         checked = self.mode_group.checkedButton()
         mode = checked.text().lower() if checked else "single"
         url = self.url_input.text().strip()
+        
+        if not url:
+            self._show_toast("Please enter a YouTube URL", False)
+            return
+        
         fmt_text = self.format_combo.currentText().lower()
         fmt = "mp3" if "mp3" in fmt_text else "mp4"
         quality_text = self.quality_combo.currentText()
         digits = "".join(ch for ch in quality_text if ch.isdigit())
         quality = int(digits) if digits else None
+        
         logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
-        if "playlist" in mode:
-            return self._on_convert_playlist_clicked(url, fmt, quality)
-        return self._on_convert_mp3_clicked(url, fmt, quality)
+        
+        # Start spinner and disable button
+        self._start_loading()
+        
+        # Create and start worker thread
+        self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+        self.worker.finished.connect(self._on_download_finished)
+        self.worker.start()
     
-    def _on_convert_mp3_clicked(self, url: str, fmt: str, quality: int | None) -> None:
-        logger.info("Single video conversion", extra={"url": url, "fmt": fmt, "quality": quality})
-        return download_and_convert(url, fmt, quality)
+    def _start_loading(self):
+        """Show spinner in button and disable it."""
+        self.convert_btn.setText("")
+        self.convert_btn.setEnabled(False)
+        
+        # Position spinner in the center of the button
+        self.spinner.setParent(self.convert_btn)
+        button_rect = self.convert_btn.rect()
+        spinner_x = (button_rect.width() - self.spinner.width()) // 2
+        spinner_y = (button_rect.height() - self.spinner.height()) // 2
+        self.spinner.move(spinner_x, spinner_y)
+        self.spinner.start()
     
-    def _on_convert_playlist_clicked(self, url: str, fmt: str, quality: int | None) -> None:
-        logger.info("Playlist conversion", extra={"url": url, "fmt": fmt, "quality": quality})
-        return download_playlist(url, fmt, quality)
+    def _stop_loading(self):
+        """Stop spinner and restore button."""
+        self.spinner.stop()
+        self.spinner.setParent(self)
+        self.spinner.hide()
+        self.convert_btn.setText(self.original_button_text)
+        self.convert_btn.setEnabled(True)
+    
+    def _on_download_finished(self, success: bool, message: str, video_name: str):
+        """Handle download completion."""
+        self._stop_loading()
+        self._show_toast(message, success)
+        
+        if success:
+            logger.info("Download completed successfully", extra={"video_name": video_name})
+        else:
+            logger.error("Download failed", extra={"message": message})
+    
+    def _show_toast(self, message: str, is_success: bool):
+        """Show a toast message to the user."""
+        from PySide6.QtWidgets import QMessageBox
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Success" if is_success else "Error")
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Information if is_success else QMessageBox.Warning)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        
+        # Apply custom styling
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background: #1b1b1f;
+            }
+            QMessageBox QLabel {
+                color: #f2f3f7;
+                font-size: 14px;
+            }
+            QPushButton {
+                background: #e65050;
+                color: #fdfdff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background: #d33b3b;
+            }
+        """)
+        
+        msg_box.exec()
 
 
 def main() -> None:
