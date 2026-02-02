@@ -4,6 +4,7 @@ Built with PySide6. No download/conversion functionality is wired yet.
 """
 from pathlib import Path
 import logging
+import sys
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF
 from PySide6.QtGui import QIcon, QPainter, QPen, QColor, QConicalGradient
@@ -26,7 +27,14 @@ from PySide6.QtWidgets import (
 )
 
 
+
+
+def resource_path(name):
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / name
+    return Path(__file__).parent / name
 class SpinnerWidget(QWidget):
+
     """A custom spinning loader widget."""
     
     def __init__(self, parent=None, color=QColor(230, 80, 80), line_width=4):
@@ -478,6 +486,7 @@ class ConverterWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication([])
+    app.setWindowIcon(QIcon(str(resource_path("icon.ico"))))
     window = ConverterWindow()
     window.showMaximized()
     tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), parent=None)
