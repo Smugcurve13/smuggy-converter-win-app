@@ -27,13 +27,10 @@ def extract_playlist_info(url):
                     time = str(datetime.timedelta(seconds=entry.get("duration", 0)))
                     beech_ka_array.append(time)
                     final_array.append(beech_ka_array)
-            
-                
-            print(final_array)
+        #     print(final_array)
         
-        with open("test/playlist_info.json", "w", encoding="utf-8") as f:
-            f.write(json.dumps(final_array, indent=4))
-
+        # with open("test/playlist_info.json", "w", encoding="utf-8") as f:
+        #     f.write(json.dumps(final_array, indent=4))
         return playlist_title, final_array
     except Exception as e:
         print(f"Failed to extract playlist: {e}")

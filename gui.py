@@ -23,8 +23,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QSystemTrayIcon,
+    QDialog,
+    QListWidget,
+    QListWidgetItem,
+    QCheckBox,
 )
 
+from downloader import download_and_convert, download_playlist
+from extractor import extract_playlist_info
+from config import ICON_PATH, ICO_ICON_PATH, OUTPUT_DIR_FILE
 
 class SpinnerWidget(QWidget):
     """A custom spinning loader widget."""
@@ -78,9 +85,6 @@ class SpinnerWidget(QWidget):
         span_angle = 270 * 16
         painter.drawArc(rect, start_angle, span_angle)
 
-from downloader import download_and_convert, download_playlist
-from config import ICON_PATH, ICO_ICON_PATH, OUTPUT_DIR_FILE
-
 
 icon_path = Path(__file__).with_name(ICON_PATH)
 ico_icon_path = Path(__file__).with_name(ICO_ICON_PATH)
@@ -89,6 +93,237 @@ output_dir_file = Path(__file__).with_name(OUTPUT_DIR_FILE)
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+
+class PlaylistSelectionDialog(QDialog):
+    """Dialog for selecting videos from a playlist."""
+    
+    def __init__(self, playlist_title: str, video_data: list, parent=None):
+        super().__init__(parent)
+        self.playlist_title = playlist_title
+        self.video_data = video_data  # [[url, title, duration], ...]
+        self.selected_videos = []
+        self.setWindowTitle("Select Videos")
+        self.setModal(True)
+        self.resize(700, 600)
+        self._build_ui()
+        self._apply_theme()
+    
+    def _apply_theme(self):
+        self.setStyleSheet("""
+            QDialog {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                          stop:0 #1b1b1f, stop:1 #0e0e11);
+            }
+            QLabel {
+                color: #f2f3f7;
+            }
+            QLabel#playlistTitle {
+                color: #e65050;
+                font-size: 24px;
+                font-weight: 700;
+            }
+            QLineEdit {
+                background: #0f0f13;
+                color: #e9e9ef;
+                border: 1px solid #2b2b31;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 14px;
+            }
+            QListWidget {
+                background: #0f0f13;
+                color: #e9e9ef;
+                border: 1px solid #2b2b31;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 4px;
+                padding-right: 30px;
+            }
+            QListWidget::item:hover {
+                background: #2d2a2f;
+            }
+            QListWidget::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #2b2b31;
+                border-radius: 4px;
+                background: #0f0f13;
+                right: 8px;
+            }
+            QListWidget::indicator:checked {
+                background: #e65050;
+                border-color: #e65050;
+            }
+            QCheckBox {
+                color: #f2f3f7;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #2b2b31;
+                border-radius: 4px;
+                background: #0f0f13;
+            }
+            QCheckBox::indicator:checked {
+                background: #e65050;
+                border-color: #e65050;
+            }
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                          stop:0 #c13232, stop:1 #c96851);
+                border-radius: 8px;
+                color: #fdfdff;
+                font-size: 16px;
+                font-weight: 600;
+                padding: 12px 24px;
+                border: none;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                          stop:0 #d33b3b, stop:1 #d3745b);
+            }
+            QPushButton:pressed {
+                background: #a92e2e;
+            }
+            QPushButton#cancelBtn {
+                background: #2d2a2f;
+            }
+            QPushButton#cancelBtn:hover {
+                background: #3d3a3f;
+            }
+        """)
+    
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+        
+        # Playlist title
+        title_label = QLabel(self.playlist_title)
+        title_label.setObjectName("playlistTitle")
+        layout.addWidget(title_label)
+        
+        # Search box
+        search_label = QLabel("Search:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Type to search videos...")
+        self.search_input.textChanged.connect(self._filter_list)
+        layout.addWidget(search_label)
+        layout.addWidget(self.search_input)
+        
+        # Select All checkbox (right-aligned)
+        select_all_layout = QHBoxLayout()
+        select_all_layout.addStretch()
+        self.select_all_checkbox = QCheckBox("Select All")
+        self.select_all_checkbox.setTristate(True)
+        self.select_all_checkbox.setLayoutDirection(Qt.RightToLeft)
+        self.select_all_checkbox.stateChanged.connect(self._toggle_select_all)
+        select_all_layout.addWidget(self.select_all_checkbox)
+        layout.addLayout(select_all_layout)
+        
+        # Video list
+        self.video_list = QListWidget()
+        self.video_list.itemClicked.connect(self._on_item_clicked)
+        self._populate_list()
+        layout.addWidget(self.video_list)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("cancelBtn")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        ok_btn = QPushButton("Convert Selected")
+        ok_btn.clicked.connect(self._on_ok_clicked)
+        button_layout.addWidget(ok_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def _populate_list(self):
+        """Populate the list with video data."""
+        self.video_list.clear()
+        for video in self.video_data:
+            url, title, duration = video
+            item_text = f"{title}  •  {duration}"
+            item = QListWidgetItem(item_text)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked)
+            item.setData(Qt.UserRole, video)  # Store full video data
+            self.video_list.addItem(item)
+    
+    def _filter_list(self):
+        """Filter the video list based on search text."""
+        search_text = self.search_input.text().lower()
+        for i in range(self.video_list.count()):
+            item = self.video_list.item(i)
+            video_data = item.data(Qt.UserRole)
+            _, title, _ = video_data
+            item.setHidden(search_text not in title.lower())
+        self._update_select_all_state()
+    
+    def _on_item_clicked(self, item):
+        """Toggle checkbox when item is clicked."""
+        current_state = item.checkState()
+        new_state = Qt.Unchecked if current_state == Qt.Checked else Qt.Checked
+        item.setCheckState(new_state)
+        self._update_select_all_state()
+    
+    def _update_select_all_state(self):
+        """Update Select All checkbox based on item states."""
+        visible_items = []
+        checked_items = []
+        
+        for i in range(self.video_list.count()):
+            item = self.video_list.item(i)
+            if not item.isHidden():
+                visible_items.append(item)
+                if item.checkState() == Qt.Checked:
+                    checked_items.append(item)
+        
+        # Block signals to avoid triggering _toggle_select_all
+        self.select_all_checkbox.blockSignals(True)
+        
+        if len(visible_items) > 0 and len(checked_items) == len(visible_items):
+            self.select_all_checkbox.setCheckState(Qt.Checked)
+        elif len(checked_items) > 0:
+            self.select_all_checkbox.setCheckState(Qt.PartiallyChecked)
+        else:
+            self.select_all_checkbox.setCheckState(Qt.Unchecked)
+        
+        self.select_all_checkbox.blockSignals(False)
+    
+    def _toggle_select_all(self, state):
+        """Select or deselect all visible items."""
+        check_state = Qt.Checked if state == Qt.Checked else Qt.Unchecked
+        for i in range(self.video_list.count()):
+            item = self.video_list.item(i)
+            if not item.isHidden():
+                item.setCheckState(check_state)
+    
+    def _on_ok_clicked(self):
+        """Handle OK button click."""
+        checked_items = []
+        for i in range(self.video_list.count()):
+            item = self.video_list.item(i)
+            if item.checkState() == Qt.Checked:
+                checked_items.append(item)
+        
+        if not checked_items:
+            # Show warning if no videos selected
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "No Selection", "Please select at least one video.")
+            return
+        
+        self.selected_videos = [item.data(Qt.UserRole) for item in checked_items]
+        self.accept()
 
 
 class DownloadWorker(QThread):
@@ -109,9 +344,10 @@ class DownloadWorker(QThread):
             
             if "playlist" in self.mode:
                 # Download playlist to a subfolder
-                results = download_playlist(self.url, self.fmt, self.quality, target_dir=self.output_dir)
+                # results = download_playlist(self.url, self.fmt, self.quality, target_dir=self.output_dir)
+                name, results =  extract_playlist_info(self.url)
                 # Extract playlist name - it's saved in a subdirectory
-                playlist_name = "playlist"
+                playlist_name = name
                 if results and len(results) > 0:
                     # Get the most recently created directory in output_dir
                     dirs = [d for d in os.listdir(self.output_dir) if os.path.isdir(os.path.join(self.output_dir, d))]
@@ -232,30 +468,6 @@ class ConverterWindow(QMainWindow):
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
         return layout
-
-    # def _badges(self) -> QHBoxLayout:
-    #     layout = QHBoxLayout()
-    #     layout.setSpacing(24)
-    #     layout.addStretch()
-    #     for text in ["Lightning Fast", "100% Safe", "No Registration"]:
-    #         pill = self._badge(text)
-    #         layout.addWidget(pill)
-    #     layout.addStretch()
-    #     return layout
-
-    # def _badge(self, text: str) -> QWidget:
-    #     pill = QWidget()
-    #     pill.setObjectName("card")
-    #     pill_layout = QHBoxLayout(pill)
-    #     pill_layout.setContentsMargins(14, 8, 14, 8)
-    #     icon = QLabel("*")  # Minimal ASCII marker; replace with icon later if desired.
-    #     icon.setObjectName("pillText")
-    #     label = QLabel(text)
-    #     label.setObjectName("pillText")
-    #     pill_layout.addWidget(icon)
-    #     pill_layout.addSpacing(6)
-    #     pill_layout.addWidget(label)
-    #     return pill
 
     def _mode_switcher(self) -> QVBoxLayout:
         layout = QVBoxLayout()
@@ -394,6 +606,11 @@ class ConverterWindow(QMainWindow):
             self._show_toast("Please enter a YouTube URL", False)
             return
         
+        # Check if playlist URL is entered in single video mode
+        if "playlist?list=" in url and "playlist" not in mode:
+            self._show_toast("Playlist detected: switch modes", False)
+            return
+        
         fmt_text = self.format_combo.currentText().lower()
         fmt = "mp3" if "mp3" in fmt_text else "mp4"
         quality_text = self.quality_combo.currentText()
@@ -402,13 +619,39 @@ class ConverterWindow(QMainWindow):
         
         logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
         
-        # Start spinner and disable button
-        self._start_loading()
-        
-        # Create and start worker thread
-        self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
-        self.worker.finished.connect(self._on_download_finished)
-        self.worker.start()
+        # If playlist mode, show selection dialog first
+        if "playlist" in mode:
+            try:
+                # Extract playlist info
+                playlist_title, video_data = extract_playlist_info(url)
+                
+                if not video_data:
+                    self._show_toast("Failed to extract playlist information", False)
+                    return
+                
+                # Show selection dialog
+                dialog = PlaylistSelectionDialog(playlist_title, video_data, self)
+                if dialog.exec() == QDialog.Accepted:
+                    selected_videos = dialog.selected_videos
+                    if selected_videos:
+                        logger.info(f"User selected {len(selected_videos)} videos from playlist")
+                        # TODO: Process selected videos
+                        self._show_toast(f"Selected {len(selected_videos)} videos. Download will start soon.", True)
+                else:
+                    logger.info("User cancelled playlist selection")
+                    return
+            except Exception as e:
+                logger.error(f"Failed to extract playlist: {e}")
+                self._show_toast(f"Failed to extract playlist: {str(e)}", False)
+                return
+        else:
+            # Start spinner and disable button
+            self._start_loading()
+            
+            # Create and start worker thread
+            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+            self.worker.finished.connect(self._on_download_finished)
+            self.worker.start()
     
     def _start_loading(self):
         """Show spinner in button and disable it."""
