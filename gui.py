@@ -300,12 +300,23 @@ class ConverterWindow(QMainWindow):
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("mode")
+            btn.clicked.connect(self._on_mode_btn_click)
             self.mode_group.addButton(btn)
             modes.addWidget(btn)
         self.mode_group.buttons()[0].setChecked(True)
         modes.addStretch()
         layout.addLayout(modes)
         return layout
+
+    def _on_mode_btn_click(self):
+        if "Video" in self.url_label.text():
+            self.url_label.setText("YouTube Playlist URL:")
+            self.url_input.setPlaceholderText(
+                "https://www.youtube.com/playlist?list=..."
+            )
+        else:
+            self.url_label.setText("YouTube Video URL:")
+            self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
 
     def _form_card(self) -> QWidget:
         card = QWidget()
@@ -324,7 +335,7 @@ class ConverterWindow(QMainWindow):
         output_row.addWidget(self.output_path_edit)
         output_row.addWidget(browse_btn)
 
-        url_label = QLabel("YouTube Video URL:")
+        self.url_label = QLabel("YouTube Video URL:")
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
 
@@ -341,7 +352,7 @@ class ConverterWindow(QMainWindow):
         form_grid.setSpacing(10)
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
-        form_grid.addWidget(url_label)
+        form_grid.addWidget(self.url_label)
         form_grid.addWidget(self.url_input)
         form_grid.addWidget(format_label)
         form_grid.addWidget(self.format_combo)
