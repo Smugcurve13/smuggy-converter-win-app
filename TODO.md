@@ -10,21 +10,21 @@ Features:
 1. Give toggle to save metadata or not (if metadata has more than just the download timestamp)
 2. MP4 download toggle
 3. Limit MP4 downloads to prevent YouTube flagging IP (~ 50 in a playlist)
-4. App Icon
-5. Distribution - Package .exe and .dmg and upload to GitHub
+4. - [x] App Icon
+5. - [] Distribution - Package .exe and .dmg and upload to GitHub
 6. Package for Linux
 7. Batch download (list of links, csv of links, etc.)
 8. Download playlists from Apple Music / Spotify / etc.
 9. Website for outreach and link to .exe and .dmg
-10. Progress bar to show conversion / download progress
+10. - [x] Progress bar to show conversion / download progress
 11. Click to open output folder
 12. Store logs
 13. Auto-update
 14. Popup to show new version available (poll GitHub releases)
-15. Allow user to select download quality
-16. Allow user to pick which videos to download from playlist
+15. - [x] Allow user to select download quality
+16. - [x] Allow user to pick which videos to download from playlist
 17. Clear form on success
-18. Toast message on success / failure
+18. - [x] Toast message on success / failure
 19. Add safeguards to prevent YouTube IP flagging
-20. Reduce package size
+20. - [x] Reduce package size
 
