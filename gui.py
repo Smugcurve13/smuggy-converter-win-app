@@ -5,7 +5,7 @@ Built with PySide6. No download/conversion functionality is wired yet.
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF
+from PySide6.QtCore import Qt, QTimer, QThread, Signal, QRectF, QSignalBlocker
 from PySide6.QtGui import QIcon, QPainter, QPen, QColor, QConicalGradient
 from PySide6.QtWidgets import (
     QApplication,
@@ -221,15 +221,15 @@ class PlaylistSelectionDialog(QDialog):
         select_all_layout = QHBoxLayout()
         select_all_layout.addStretch()
         self.select_all_checkbox = QCheckBox("Select All")
-        self.select_all_checkbox.setTristate(True)
+        self.select_all_checkbox.setTristate(False)
         self.select_all_checkbox.setLayoutDirection(Qt.RightToLeft)
-        self.select_all_checkbox.stateChanged.connect(self._toggle_select_all)
+        self.select_all_checkbox.clicked.connect(self._toggle_select_all)
         select_all_layout.addWidget(self.select_all_checkbox)
         layout.addLayout(select_all_layout)
         
         # Video list
         self.video_list = QListWidget()
-        self.video_list.itemClicked.connect(self._on_item_clicked)
+        self.video_list.itemChanged.connect(self._on_item_changed)
         self._populate_list()
         layout.addWidget(self.video_list)
         
@@ -270,44 +270,47 @@ class PlaylistSelectionDialog(QDialog):
             item.setHidden(search_text not in title.lower())
         self._update_select_all_state()
     
-    def _on_item_clicked(self, item):
-        """Toggle checkbox when item is clicked."""
-        current_state = item.checkState()
-        new_state = Qt.Unchecked if current_state == Qt.Checked else Qt.Checked
-        item.setCheckState(new_state)
+    def _on_item_changed(self, item):
         self._update_select_all_state()
     
     def _update_select_all_state(self):
         """Update Select All checkbox based on item states."""
-        visible_items = []
-        checked_items = []
-        
+        visible = 0
+        checked = 0
+
         for i in range(self.video_list.count()):
             item = self.video_list.item(i)
-            if not item.isHidden():
-                visible_items.append(item)
-                if item.checkState() == Qt.Checked:
-                    checked_items.append(item)
-        
+
+            if item.isHidden():
+                continue
+
+            visible += 1
+
+            if item.checkState() == Qt.Checked:
+                checked += 1
+
         # Block signals to avoid triggering _toggle_select_all
         self.select_all_checkbox.blockSignals(True)
-        
-        if len(visible_items) > 0 and len(checked_items) == len(visible_items):
-            self.select_all_checkbox.setCheckState(Qt.Checked)
-        elif len(checked_items) > 0:
-            self.select_all_checkbox.setCheckState(Qt.PartiallyChecked)
-        else:
-            self.select_all_checkbox.setCheckState(Qt.Unchecked)
-        
+        self.select_all_checkbox.setChecked(visible > 0 and checked == visible)
         self.select_all_checkbox.blockSignals(False)
     
-    def _toggle_select_all(self, state):
+    def _toggle_select_all(self, checked):
         """Select or deselect all visible items."""
-        check_state = Qt.Checked if state == Qt.Checked else Qt.Unchecked
+        visible_count = 0
         for i in range(self.video_list.count()):
-            item = self.video_list.item(i)
-            if not item.isHidden():
-                item.setCheckState(check_state)
+            if not self.video_list.item(i).isHidden():
+                visible_count += 1
+        state_label = "checked" if checked else "unchecked"
+        logger.info("Select all toggled", extra={"state": state_label, "visible_count": visible_count})
+
+        with QSignalBlocker(self.video_list):
+            check_state = Qt.Checked if checked else Qt.Unchecked
+            for i in range(self.video_list.count()):
+                item = self.video_list.item(i)
+                if not item.isHidden():
+                    item.setCheckState(check_state)
+
+        self._update_select_all_state()
     
     def _on_ok_clicked(self):
         """Handle OK button click."""
