@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QProgressBar,
     QPushButton,
     QSpacerItem,
     QStackedLayout,
@@ -30,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from downloader import download_and_convert, download_playlist
-from playlist import extract_playlist_info
+from playlist import extract_playlist_info, extract_video_info_from_array, selected_playlist_videos
 from config import ICON_PATH, ICO_ICON_PATH, OUTPUT_DIR_FILE
 
 class SpinnerWidget(QWidget):
@@ -329,33 +330,44 @@ class PlaylistSelectionDialog(QDialog):
 class DownloadWorker(QThread):
     """Worker thread for downloading and converting videos."""
     finished = Signal(bool, str, str)  # success, result_message, video_name
+    progress = Signal(int)
     
-    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path):
+    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path, selected_videos: list | None = None, playlist_title: str | None = None):
         super().__init__()
         self.mode = mode
         self.url = url
         self.fmt = fmt
         self.quality = quality
         self.output_dir = str(output_dir)
+        self.selected_videos = selected_videos or []
+        self.playlist_title = playlist_title or "playlist"
     
     def run(self):
         try:
             import os
             
             if "playlist" in self.mode:
-                # Download playlist to a subfolder
-                # results = download_playlist(self.url, self.fmt, self.quality, target_dir=self.output_dir)
-                name, results =  extract_playlist_info(self.url)
-                # Extract playlist name - it's saved in a subdirectory
-                playlist_name = name
-                if results and len(results) > 0:
-                    # Get the most recently created directory in output_dir
-                    dirs = [d for d in os.listdir(self.output_dir) if os.path.isdir(os.path.join(self.output_dir, d))]
-                    if dirs:
-                        # Get the newest directory
-                        newest_dir = max([os.path.join(self.output_dir, d) for d in dirs], key=os.path.getmtime)
-                        playlist_name = os.path.basename(newest_dir)
-                self.finished.emit(True, f'{playlist_name} is saved', playlist_name)
+                if self.selected_videos:
+                    videos_dict = extract_video_info_from_array(self.selected_videos)
+
+                    def progress_callback(percent):
+                        self.progress.emit(percent)
+
+                    selected_playlist_videos(self.playlist_title, videos_dict, self.fmt, self.quality, target_dir=self.output_dir, progress_callback=progress_callback)
+                    self.finished.emit(True, f'{self.playlist_title} is saved', self.playlist_title)
+                else:
+                    # Download full playlist to a subfolder
+                    name, results = extract_playlist_info(self.url)
+                    # Extract playlist name - it's saved in a subdirectory
+                    playlist_name = name
+                    if results and len(results) > 0:
+                        # Get the most recently created directory in output_dir
+                        dirs = [d for d in os.listdir(self.output_dir) if os.path.isdir(os.path.join(self.output_dir, d))]
+                        if dirs:
+                            # Get the newest directory
+                            newest_dir = max([os.path.join(self.output_dir, d) for d in dirs], key=os.path.getmtime)
+                            playlist_name = os.path.basename(newest_dir)
+                    self.finished.emit(True, f'{playlist_name} is saved', playlist_name)
             else:
                 filename = download_and_convert(self.url, self.fmt, self.quality, target_dir=self.output_dir)
                 self.finished.emit(True, f'{filename} is saved', filename)
@@ -586,6 +598,12 @@ class ConverterWindow(QMainWindow):
         self.convert_btn.clicked.connect(self._on_convert_clicked)
         layout.addSpacing(4)
         layout.addWidget(self.convert_btn)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
         layout.addSpacing(8)
 
         note = QLabel("Keep SmuggyConverter open during download to avoid interruptions")
@@ -635,8 +653,11 @@ class ConverterWindow(QMainWindow):
                     selected_videos = dialog.selected_videos
                     if selected_videos:
                         logger.info(f"User selected {len(selected_videos)} videos from playlist")
-                        # TODO: Process selected videos
-                        self._show_toast(f"Selected {len(selected_videos)} videos. Download will start soon.", True)
+                        self._start_loading(show_progress=True)
+                        self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, selected_videos=selected_videos, playlist_title=playlist_title)
+                        self.worker.progress.connect(self._on_download_progress)
+                        self.worker.finished.connect(self._on_download_finished)
+                        self.worker.start()
                 else:
                     logger.info("User cancelled playlist selection")
                     return
@@ -646,17 +667,22 @@ class ConverterWindow(QMainWindow):
                 return
         else:
             # Start spinner and disable button
-            self._start_loading()
+            self._start_loading(show_progress=False)
             
             # Create and start worker thread
             self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
             self.worker.finished.connect(self._on_download_finished)
             self.worker.start()
     
-    def _start_loading(self):
+    def _start_loading(self, show_progress: bool = False):
         """Show spinner in button and disable it."""
         self.convert_btn.setText("")
         self.convert_btn.setEnabled(False)
+        if show_progress:
+            self.progress_bar.setValue(0)
+            self.progress_bar.show()
+        else:
+            self.progress_bar.hide()
         
         # Position spinner in the center of the button
         self.spinner.setParent(self.convert_btn)
@@ -671,6 +697,8 @@ class ConverterWindow(QMainWindow):
         self.spinner.stop()
         self.spinner.setParent(self)
         self.spinner.hide()
+        self.progress_bar.hide()
+        self.progress_bar.setValue(0)
         self.convert_btn.setText(self.original_button_text)
         self.convert_btn.setEnabled(True)
     
@@ -683,6 +711,9 @@ class ConverterWindow(QMainWindow):
             logger.info("Download completed successfully", extra={"video_name": video_name})
         else:
             logger.error("Download failed", extra={"message": message})
+
+    def _on_download_progress(self, percent: int):
+        self.progress_bar.setValue(percent)
     
     def _show_toast(self, message: str, is_success: bool):
         """Show a toast message to the user."""

@@ -82,7 +82,7 @@ def extract_video_info_from_array(final_array):
 #         except Exception as e:
 #             logger.error(f"Failed to download {value}: {e}")
 
-def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_dir=None):
+def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_dir=None, progress_callback=None):
     base_dir = target_dir if target_dir else MEDIA_DIR
     playlist_title_safe = sanitize_filename(playlist_title)
     playlist_dir = os.path.join(base_dir, playlist_title_safe)
@@ -90,8 +90,9 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
         os.makedirs(playlist_dir, exist_ok=True)
     ext = fmt
     results = []
+    total = len(videos_dict)
     try:
-        for key, value in videos_dict.items():    
+        for idx, (key, value) in enumerate(videos_dict.items()):
             title = key
             safe_title = sanitize_filename(title)
             filename = f"{safe_title}.{ext}"
@@ -114,6 +115,9 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
                 if os.path.abspath(downloaded_path) == os.path.abspath(target_path):
                     # write_metadata(filename, playlist_dir)
                     results.append(filename)
+                    if progress_callback:
+                        progress = int(((idx + 1) / total) * 100) if total else 100
+                        progress_callback(progress)
                     continue
                 # Conversion if needed
                 if fmt == "mp3":
@@ -134,12 +138,16 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
                     print(f"Converted and saved: {filename}")
                     logger.info("MP3 conversion complete", extra={"target_path": target_path})
                     results.append(filename)
-
+                    if progress_callback:
+                        progress = int(((idx + 1) / total) * 100) if total else 100
+                        progress_callback(progress)
+                        
                 else:
                     raise ValueError("Invalid format")
+        return results
     except Exception as e:
-            logger.error("Download/convert failed", extra={"error": str(e)})
-            raise Exception(f"Download/convert error: {e}")
+        logger.error("Download/convert failed", extra={"error": str(e)})
+        raise Exception(f"Download/convert error: {e}")
 
 def single_url_downloader(videos_dict, fmt, quality, target_dir=None):
 #     base_dir = target_dir if target_dir else MEDIA_DIR
