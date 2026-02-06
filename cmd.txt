@@ -1,0 +1,1 @@
+..venv\Scripts\python.exe -m watchdog.watchmedo auto-restart -p "*.py" -R -d . -- ..venv\Scripts\python.exe gui.py

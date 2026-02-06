@@ -386,6 +386,18 @@ class DownloadWorker(QThread):
 
 
 class ConverterWindow(QMainWindow):
+    def _update_url_mode(self):
+    # Safety check in case UI isn't built yet
+        if not hasattr(self, "url_label") or not hasattr(self, "url_input"):
+            return
+
+        if self.mode_group.buttons()[1].isChecked():  # Playlist
+            self.url_label.setText("YouTube Playlist URL:")
+            self.url_input.setPlaceholderText("https://www.youtube.com/playlist?list=...")
+        else:  # Single video
+            self.url_label.setText("YouTube Video URL:")
+            self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("SmuggyConverter")
@@ -480,7 +492,7 @@ class ConverterWindow(QMainWindow):
         title_row.addWidget(accent)
         title_row.addStretch()
         layout.addLayout(title_row)
-
+        
         subtitle = QLabel(
             "Download your favorite YouTube videos and playlists in high quality. Fast, free, and easy to use."
         )
@@ -496,16 +508,16 @@ class ConverterWindow(QMainWindow):
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet("font-size: 24px; font-weight: bold; color: #f2f3f7;")
         layout.addWidget(label)
-
         sub = QLabel("Paste any YouTube URL and select your preferred format and quality")
         sub.setObjectName("subtitle")
         sub.setAlignment(Qt.AlignCenter)
         layout.addWidget(sub)
-
         modes = QHBoxLayout()
         modes.setSpacing(10)
         modes.addStretch()
         self.mode_group = QButtonGroup(self)
+        self.mode_group.buttonClicked.connect(self._update_url_mode)
+        
         for text in ["Single Video", "Playlist"]:
             btn = QPushButton(text)
             btn.setCheckable(True)
@@ -523,7 +535,10 @@ class ConverterWindow(QMainWindow):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 18, 18, 18)
         card_layout.setSpacing(14)
+        form_grid = QVBoxLayout()
+        form_grid.setSpacing(10)
 
+    # Output folder row
         output_label = QLabel("Output Folder Path:")
         self.output_path_edit = QLineEdit(str(self.output_dir))
         self.output_path_edit.setReadOnly(True)
@@ -537,24 +552,25 @@ class ConverterWindow(QMainWindow):
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
 
-        url_label = QLabel("YouTube Video URL:")
+    # URL input
+        self.url_label = QLabel("YouTube Video URL:")
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
 
+    # Format
         format_label = QLabel("Output Format:")
         self.format_combo = QComboBox()
-        # format_combo.addItems(["MP3 (Audio)", "MP4 (Video)"])
         self.format_combo.addItems(["MP3 (Audio)"])
 
+    # Quality
         quality_label = QLabel("Audio Quality:")
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(["320 kbps (Highest)", "256 kbps", "192 kbps"])
 
-        form_grid = QVBoxLayout()
-        form_grid.setSpacing(10)
+    # Build form layout
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
-        form_grid.addWidget(url_label)
+        form_grid.addWidget(self.url_label)
         form_grid.addWidget(self.url_input)
         form_grid.addWidget(format_label)
         form_grid.addWidget(self.format_combo)
@@ -562,6 +578,8 @@ class ConverterWindow(QMainWindow):
         form_grid.addWidget(self.quality_combo)
 
         card_layout.addLayout(form_grid)
+    # Sync label with current mode (important)
+        self._update_url_mode()
         return card
 
     def _choose_output_dir(self) -> None:
