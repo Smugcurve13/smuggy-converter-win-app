@@ -3,9 +3,8 @@ import uuid
 from pathlib import Path
 import re
 
-ICON_PATH = "logo.png"
-ICO_ICON_PATH = "icon.ico"
-OUTPUT_DIR_FILE = "output_dir.txt"
+from config import OUTPUT_DIR_FILE
+
 DEFAULT_OUTPUT_DIR = Path.cwd() / "output"
 
 

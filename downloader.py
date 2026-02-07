@@ -1,15 +1,13 @@
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 
 import ffmpeg
 import yt_dlp
 from ffmpeg import Error as FFmpegError
-from file_utils import cleanup_file, generate_uuid_filename, get_media_path, MEDIA_DIR
+from file_utils import cleanup_file, MEDIA_DIR
 from file_utils import sanitize_filename
-# from .job_manager import update_job_progress
 
 METADATA_EXT = ".metadata.json"
 
@@ -17,7 +15,6 @@ logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-# Write metadata with timestamp
 def write_metadata(file_id, base_dir=None):
     metadata = {"timestamp": datetime.now(timezone.utc).isoformat()}
     target_dir = base_dir if base_dir else MEDIA_DIR
@@ -65,7 +62,6 @@ def download_and_convert(url, fmt, quality, target_dir=None):
             if os.path.abspath(downloaded_path) == os.path.abspath(target_path):
                 write_metadata(filename)
                 return filename
-            # Conversion if needed
             if fmt == "mp3":
                 try:
                     (
@@ -81,7 +77,7 @@ def download_and_convert(url, fmt, quality, target_dir=None):
                     raise Exception(f"ffmpeg error: {err}")
                 cleanup_file(downloaded_path)
                 write_metadata(filename, base_dir)
-                print(f"Converted and saved: {filename}")
+                logger.info(f"Converted and saved: {filename}")
                 logger.info("MP3 conversion complete", extra={"target_path": target_path})
                 return filename
             elif fmt == "mp4":
@@ -127,7 +123,6 @@ def download_playlist(url, fmt, quality, target_dir=None):
                         video_urls.append(f"https://www.youtube.com/watch?v={entry['id']}")
         logger.info("Playlist entries fetched", extra={"count": len(video_urls)})
     except Exception as e:
-        # update_job_progress(job_id, 100, results=[{"error": f"Failed to extract playlist: {e}"}])
         print(f"Failed to extract playlist: {e}")
         logger.error("Failed to extract playlist", extra={"error": str(e)})
         return
@@ -150,9 +145,6 @@ def download_playlist(url, fmt, quality, target_dir=None):
         progress = int(((idx + 1) / total) * 100) if total else 100
         logger.info("Playlist progress", extra={"progress": progress, "completed": idx + 1, "total": total})
     return results
-        # update_job_progress(job_id, progress, results=results)
-    # update_job_progress(job_id, 100, results=results)
-
 
 def download_batch(urls, fmt, quality, job_id):
     results = []
@@ -164,11 +156,8 @@ def download_batch(urls, fmt, quality, job_id):
         except Exception as e:
             results.append({"url": url, "error": str(e), "status": "failed"})
         progress = int(((idx + 1) / total) * 100) if total else 100
-        # update_job_progress(job_id, progress, results=results)
-    # update_job_progress(job_id, 100, results=results)
 
 if __name__ == "__main__":
-    # Example usage
     test_url = "https://www.youtube.com/watch?v=DxsDekHDKXo"
     try:
         file_id = download_and_convert(test_url, "mp3", 320)

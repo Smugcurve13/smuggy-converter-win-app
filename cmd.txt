@@ -1,1 +1,10 @@
-..venv\Scripts\python.exe -m watchdog.watchmedo auto-restart -p "*.py" -R -d . -- ..venv\Scripts\python.exe gui.py
+1 : ..venv\Scripts\python.exe -m watchdog.watchmedo auto-restart -p "*.py" -R -d . -- ..venv\Scripts\python.exe gui.py
+To refresh the gui automatically by closing and opening the gui , similar to how app refreshes automatically in flask 
+
+2 : Pyinstaller cmds
+
+Windows :
+ pyinstaller --onefile --windowed --icon=icon.ico --add-data "icon.ico;." --clean --name="SmuggyConverter" main.py
+
+MacOS : 
+pyinstaller --onefile --windowed --icon=icon.icns --add-data "icon.icns:." --clean --name="SmuggyConverter" main.py
