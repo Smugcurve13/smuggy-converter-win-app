@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QDialog,
+    QMessageBox
 )
 
 from gui.default_output_dialog import DefaultOutputDirDialog
@@ -400,7 +401,6 @@ class ConverterWindow(QMainWindow):
     
     def _show_toast(self, message: str, is_success: bool):
         """Show a toast message to the user."""
-        from PySide6.QtWidgets import QMessageBox
         
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Success" if is_success else "Error")
