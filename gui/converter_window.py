@@ -393,7 +393,7 @@ class ConverterWindow(QMainWindow):
         if success:
             logger.info("Download completed successfully", extra={"video_name": video_name})
         else:
-            logger.error("Download failed", extra={"message": message})
+            logger.error("Download failed", extra={"error": message})
 
     def _on_download_progress(self, percent: int):
         self.progress_bar.setValue(percent)
