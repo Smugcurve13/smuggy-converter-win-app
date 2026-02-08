@@ -1,5 +1,4 @@
 from pathlib import Path
-import logging
 import subprocess
 import platform
 import os
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QDialog,
+    QMessageBox
 )
 
 from gui.default_output_dialog import DefaultOutputDirDialog
@@ -29,10 +29,8 @@ from core.download_worker import DownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
+from logs import logger
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class ConverterWindow(QMainWindow):
     def _update_url_mode(self):
@@ -396,14 +394,13 @@ class ConverterWindow(QMainWindow):
         if success:
             logger.info("Download completed successfully", extra={"video_name": video_name})
         else:
-            logger.error("Download failed", extra={"message": message})
+            logger.error("Download failed", extra={"error": message})
 
     def _on_download_progress(self, percent: int):
         self.progress_bar.setValue(percent)
     
     def _show_toast(self, message: str, is_success: bool):
         """Show a toast message to the user."""
-        from PySide6.QtWidgets import QMessageBox
         
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("Success" if is_success else "Error")

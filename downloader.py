@@ -1,19 +1,16 @@
 import json
-import logging
 import os
 from datetime import datetime, timezone
 
 import ffmpeg
 import yt_dlp
 from ffmpeg import Error as FFmpegError
-from file_utils import cleanup_file, MEDIA_DIR
-from file_utils import sanitize_filename
+
+from file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
+from logs import logger
 
 METADATA_EXT = ".metadata.json"
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 def write_metadata(file_id, base_dir=None):
     metadata = {"timestamp": datetime.now(timezone.utc).isoformat()}

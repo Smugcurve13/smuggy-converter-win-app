@@ -1,23 +1,20 @@
 import os
 import yt_dlp
 import datetime
-import logging
+
 import ffmpeg
 from ffmpeg import Error as FFmpegError
 
 from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
-
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-
+from logs import logger
 
 def extract_playlist_info(url):
     ydl_opts = {
         "extract_flat": True,
         "skip_download": True,
-        "quiet": True,
+        "quiet": False,
         "ignoreerrors": True,
+        "logger": logger,
     }
     final_array = []
     playlist_title = "playlist"
@@ -103,8 +100,9 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
                 "outtmpl": temp_path,
                 "format": "bestaudio/best",
                 "noplaylist": True,
-                "quiet": True,
+                "quiet": False,
                 "ignoreerrors": False,
+                "logger": logger,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(value, download=True)
