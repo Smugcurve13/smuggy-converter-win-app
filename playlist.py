@@ -1,6 +1,5 @@
 import os
 import yt_dlp
-import json
 import datetime
 import logging
 import ffmpeg
