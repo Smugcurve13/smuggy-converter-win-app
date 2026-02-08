@@ -10,14 +10,13 @@ from PySide6.QtWidgets import (
 
 from gui.converter_window import ConverterWindow
 from config import icon_path
+from logs import logger
+
+logger.info("Application started.")
 
 def resource_path(name):
     base = Path(sys._MEIPASS) if hasattr(sys, "_MEIPASS") else Path(__file__).parent
     return base / "assets" / name
-
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 def main() -> None:
     app = QApplication([])

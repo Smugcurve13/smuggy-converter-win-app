@@ -1,5 +1,4 @@
 from pathlib import Path
-import logging
 import subprocess
 import platform
 import os
@@ -29,10 +28,8 @@ from core.download_worker import DownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
+from logs import logger
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class ConverterWindow(QMainWindow):
     def _update_url_mode(self):

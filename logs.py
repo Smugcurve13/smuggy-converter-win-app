@@ -1,20 +1,29 @@
 import logging
-
 import os
 import pathlib
-import platform
+import sys
 import subprocess
+#create dir, create file , initialise logger with formatting , add levels , apply logger to file .
 
 FILENAME = "logs.txt"
+FOLDERNAME = "SmuggyConverter_logs"
 
-file = pathlib.Path().stem
+home_folder = subprocess.run("echo $HOME", shell=True, capture_output=True, text=True).stdout.strip()
+folder = f"{home_folder}/{FOLDERNAME}"
 
-if file :
-    if platform.system() == "Windows":
-        subprocess.run(["type", FILENAME, ], shell=True)  
-    elif platform.system() in ["Linux", "Darwin"]:
-        subprocess.run(["echo", "$HOME"], shell=True)
+if not os.path.exists(folder):
+    os.makedirs(folder, exist_ok=True)
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+file = pathlib.Path(f"{folder}/{FILENAME}")
+file_handler = logging.FileHandler(file)
+file_handler.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+file_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+
+logger.info("Logger initialized") 

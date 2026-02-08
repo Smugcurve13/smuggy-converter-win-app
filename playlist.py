@@ -1,16 +1,12 @@
 import os
 import yt_dlp
 import datetime
-import logging
+
 import ffmpeg
 from ffmpeg import Error as FFmpegError
 
 from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
-
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-
+from logs import logger
 
 def extract_playlist_info(url):
     ydl_opts = {

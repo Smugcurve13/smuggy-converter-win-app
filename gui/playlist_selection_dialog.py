@@ -217,7 +217,6 @@ class PlaylistSelectionDialog(QDialog):
             if not self.video_list.item(i).isHidden():
                 visible_count += 1
         state_label = "checked" if checked else "unchecked"
-        # logger.info("Select all toggled", extra={"state": state_label, "visible_count": visible_count})
 
         with QSignalBlocker(self.video_list):
             check_state = Qt.Checked if checked else Qt.Unchecked

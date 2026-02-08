@@ -10,11 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog
 )
 
-import logging
-
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+from logs import logger
 
 class DefaultOutputDirDialog(QDialog):
     """Modal dialog for choosing the default output directory."""
