@@ -8,9 +8,9 @@ from ffmpeg import Error as FFmpegError
 
 from file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
 from logs import logger
+from core.ffmpeg_resolver import get_ffmpeg_dir
 
 METADATA_EXT = ".metadata.json"
-
 
 def write_metadata(file_id, base_dir=None):
     metadata = {"timestamp": datetime.now(timezone.utc).isoformat()}
@@ -32,6 +32,7 @@ def download_and_convert(url, fmt, quality, target_dir=None):
         "ignoreerrors": False,
         "noplaylist": True,
         "skip_download": True,
+        "ffmpeg_location": str(get_ffmpeg_dir()),
     }
     try:
         with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
@@ -50,6 +51,7 @@ def download_and_convert(url, fmt, quality, target_dir=None):
             "noplaylist": True,
             "quiet": True,
             "ignoreerrors": False,
+            "ffmpeg_location": str(get_ffmpeg_dir()),
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -107,6 +109,7 @@ def download_playlist(url, fmt, quality, target_dir=None):
         "extract_flat": True,
         "quiet": True,
         "ignoreerrors": True,
+        "ffmpeg_location": str(get_ffmpeg_dir()),
     }
     video_urls = []
     playlist_title = "playlist"

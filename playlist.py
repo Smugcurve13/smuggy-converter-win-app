@@ -5,6 +5,7 @@ import datetime
 import ffmpeg
 from ffmpeg import Error as FFmpegError
 
+from core.ffmpeg_resolver import get_ffmpeg_dir
 from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
 from logs import logger
 
@@ -15,6 +16,7 @@ def extract_playlist_info(url):
         "quiet": False,
         "ignoreerrors": True,
         "logger": logger,
+        "ffmpeg_location": str(get_ffmpeg_dir()),
     }
     final_array = []
     playlist_title = "playlist"
@@ -70,6 +72,7 @@ def extract_video_info_from_array(final_array):
 #             "noplaylist": True,
 #             "quiet": True,
 #             "ignoreerrors": True,
+#             "ffmpeg_location": str(get_ffmpeg_dir()),
 #         }
 #         ydl = yt_dlp.YoutubeDL(ydl_opts)
 #         try:
@@ -167,6 +170,7 @@ def single_url_downloader(videos_dict, fmt, quality, target_dir=None):
 #                 "noplaylist": True,
 #                 "quiet": True,
 #                 "ignoreerrors": False,
+#                 "ffmpeg_location": str(get_ffmpeg_dir()), 
 #             }
 #             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 #                 info = ydl.extract_info(value, download=True)
