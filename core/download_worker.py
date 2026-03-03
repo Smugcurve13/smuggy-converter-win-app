@@ -1,3 +1,6 @@
+# this program  is for logs. 
+# it will generate logs.
+
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal

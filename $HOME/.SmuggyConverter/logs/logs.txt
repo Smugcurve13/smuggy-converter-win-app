@@ -1,0 +1,9 @@
+2026-02-10 00:19:56,613 [INFO] root: Logger initialized
+2026-02-10 00:20:00,029 [INFO] root: Application started.
+2026-02-10 00:20:00,303 [ERROR] root: Bundled ffmpeg directory not found at: C:\Users\Kalpit Makwana\Desktop\commits\smuggy-converter-win-app\ffmpeg
+2026-02-10 00:27:15,721 [INFO] root: Logger initialized
+2026-02-10 00:27:16,034 [INFO] root: Application started.
+2026-02-10 00:27:16,328 [ERROR] root: Bundled ffmpeg directory not found at: C:\Users\Kalpit Makwana\Desktop\commits\smuggy-converter-win-app\ffmpeg
+2026-02-10 00:27:38,179 [INFO] root: Logger initialized
+2026-02-10 00:27:38,393 [INFO] root: Application started.
+2026-02-10 00:27:38,459 [ERROR] root: ffmpeg.exe not found at: C:\Users\Kalpit Makwana\Desktop\commits\smuggy-converter-win-app\ffmpeg\ffmpeg.exe
