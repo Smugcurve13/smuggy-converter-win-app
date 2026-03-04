@@ -3,8 +3,7 @@ import os
 from datetime import datetime, timezone
 
 import ffmpeg 
-from config import  FFMPEG_PATH
-from config import  FFPROBE_PATH
+from config import  FFMPEG_PATH , FFPROBE_PATH
 import yt_dlp
 from ffmpeg import Error as FFmpegError
 

@@ -8,5 +8,4 @@ media
 test
 .vscode
 output_dir.txt
-$HOME\_SmuggyConverter_logs/
-ffmpeg\windows
+assets/ffmpeg
