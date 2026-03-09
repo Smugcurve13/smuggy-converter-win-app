@@ -1,10 +1,10 @@
 import os
 import uuid
 from pathlib import Path
+import re
 
-ICON_PATH = "logo.png"
-ICO_ICON_PATH = "icon.ico"
-OUTPUT_DIR_FILE = "output_dir.txt"
+from config import OUTPUT_DIR_FILE
+
 DEFAULT_OUTPUT_DIR = Path.cwd() / "output"
 
 
@@ -45,3 +45,13 @@ def cleanup_file(filepath):
         os.remove(filepath)
     except Exception:
         pass
+
+def sanitize_filename(title):
+    # Remove invalid filename characters and trim
+    title = re.sub(r'[\\/:*?"<>|]', '', title)
+    # Remove non-ASCII characters
+    title = re.sub(r'[^\x00-\x7F]+', '', title)
+    # Collapse whitespace
+    title = re.sub(r'\s+', ' ', title).strip()
+    # Limit filename length (e.g., 100 chars)
+    return title[:100]

@@ -5,3 +5,8 @@ dist
 .venv
 output
 media
+test
+.vscode
+output_dir.txt
+assets/ffmpeg
+venv
