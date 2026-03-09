@@ -9,3 +9,4 @@ test
 .vscode
 output_dir.txt
 assets/ffmpeg
+venv
