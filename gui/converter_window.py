@@ -67,7 +67,7 @@ class ConverterWindow(QMainWindow):
             self._prompt_initial_output_dir()
         else:
             self.output_path_edit.setText(str(self.output_dir))
-    
+            
     def _init_spinner(self):
         """Initialize the waiting spinner for the convert button."""
         self.spinner = SpinnerWidget(

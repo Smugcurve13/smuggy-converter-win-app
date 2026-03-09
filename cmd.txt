@@ -6,5 +6,8 @@ To refresh the gui automatically by closing and opening the gui , similar to how
 Windows :
 pyinstaller --onefile --windowed --icon=assets/icon.ico --add-data "assets/icon.ico;." --clean --name="SmuggyConverter" main.py
 
+ffmpeg bundling :
+pyinstaller main.py --onefile --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
+
 MacOS : 
 pyinstaller --onefile --windowed --icon=assets/icon.icns --add-data "assets/icon.icns:." --clean --name="SmuggyConverter" main.py

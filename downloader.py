@@ -2,7 +2,8 @@ import json
 import os
 from datetime import datetime, timezone
 
-import ffmpeg
+import ffmpeg 
+from config import  FFMPEG_PATH , FFPROBE_PATH
 import yt_dlp
 from ffmpeg import Error as FFmpegError
 
@@ -65,8 +66,12 @@ def download_and_convert(url, fmt, quality, target_dir=None):
                         ffmpeg
                         .input(downloaded_path)
                         .output(target_path, audio_bitrate=f"{quality}k" if quality else "320k", format="mp3", acodec="libmp3lame")
-                        .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-                    )
+                        .run(
+                    cmd=FFMPEG_PATH,
+    overwrite_output=True,
+    capture_stdout=True,
+    capture_stderr=True
+))
                 except FFmpegError as fe:
                     cleanup_file(downloaded_path)
                     err = fe.stderr.decode('utf-8', errors='ignore')
@@ -83,7 +88,12 @@ def download_and_convert(url, fmt, quality, target_dir=None):
                         ffmpeg
                         .input(downloaded_path)
                         .output(target_path, video_bitrate=f"{quality}k" if quality else None, format="mp4", vcodec="libx264", acodec="aac")
-                        .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+                       .run(
+    cmd=FFMPEG_PATH,
+    overwrite_output=True,
+    capture_stdout=True,
+    capture_stderr=True
+)
                     )
                 except FFmpegError as fe:
                     cleanup_file(downloaded_path)
