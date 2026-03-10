@@ -32,7 +32,10 @@ def extract_playlist_info(url):
                     beech_ka_array = []
                     beech_ka_array.append(f"https://www.youtube.com/watch?v={entry['id']}")
                     beech_ka_array.append(entry.get("title", "Unknown"))
-                    time = str(datetime.timedelta(seconds=entry.get("duration", 0)))
+                    duration = entry.get("duration")
+                    if duration is None:
+                        duration = 0
+                    time = str(datetime.timedelta(seconds=duration))
                     beech_ka_array.append(time)
                     final_array.append(beech_ka_array)
         #     print(final_array)
@@ -42,9 +45,7 @@ def extract_playlist_info(url):
         return playlist_title, final_array
     except Exception as e:
         logger.error(f"Failed to extract playlist: {e}")
-        return {
-            "error": str(e)
-        }
+        return None, []
     
 def extract_video_info_from_array(final_array):
     videos_dict = {}
