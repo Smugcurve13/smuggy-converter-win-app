@@ -7,6 +7,7 @@ from ffmpeg import Error as FFmpegError
 
 from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
 from logs import logger
+from config import FFMPEG_PATH
 
 def extract_playlist_info(url):
     ydl_opts = {
@@ -123,7 +124,11 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
                             ffmpeg
                             .input(downloaded_path)
                             .output(target_path, audio_bitrate=f"{quality}k" if quality else "320k", format="mp3", acodec="libmp3lame")
-                            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+                            .run(
+                                cmd=FFMPEG_PATH,
+                                overwrite_output=True, 
+                                capture_stdout=True, 
+                                capture_stderr=True)
                         )
                     except FFmpegError as fe:
                         cleanup_file(downloaded_path)
