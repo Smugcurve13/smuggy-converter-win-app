@@ -51,4 +51,23 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          body: |
+            ## SmuggyConverter ${{ github.ref_name }}
+
+            A Windows desktop app for downloading and converting media via yt-dlp with a PySide6 GUI.
+
+            ---
+
+            ### Installation
+
+            1. Download **SmuggyConverter-windows-${{ github.ref_name }}.zip** below.
+            2. Extract the zip to any folder.
+            3. Run **SmuggyConverter.exe** — no installation required.
+
+            > **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled — no separate install needed.
+
+            ---
+
+            ### What's Changed
+
           files: SmuggyConverter-windows-${{ github.ref_name }}.zip
