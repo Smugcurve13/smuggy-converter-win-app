@@ -3,6 +3,7 @@ import os
 import pathlib
 import subprocess
 import platform
+import zipfile
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
@@ -59,14 +60,34 @@ logger.info("OS           : %s %s", platform.system(), platform.version())
 logger.info("Date / Time  : %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 logger.info("=" * 60)
 
+def create_logs_zip(dest_path: str) -> pathlib.Path:
+    """Zip all log files in the logs folder into dest_path.
+
+    dest_path should be the full path to the target .zip file.
+    Returns the Path of the created zip.
+    """
+    zip_path = pathlib.Path(dest_path)
+    log_dir = pathlib.Path(folder)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for log_file in sorted(log_dir.iterdir()):
+            if log_file.is_file():
+                zf.write(log_file, log_file.name)
+    return zip_path
+
+
+def default_zip_name() -> str:
+    """Return a suggested zip filename based on today's date."""
+    return f"smuggyconverter_logs_{datetime.now().strftime('%Y-%m-%d')}.zip"
+
+
 def export_logs():
-    # opens export dialog and allows user to select location to save logs.txt
+    """Legacy helper: open the logs folder in the OS file manager."""
     if platform.system() == "Windows":
-        subprocess.run(f'explorer /select,"{file}"')
+        os.startfile(str(folder))
     elif platform.system() == "Darwin":  # macOS
-        subprocess.run(["open", "-R", file])
+        subprocess.run(["open", str(folder)])
     else:  # Linux
-        subprocess.run(["xdg-open", folder])
+        subprocess.run(["xdg-open", str(folder)])
 
 if __name__ == "__main__":
     export_logs()
