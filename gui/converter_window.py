@@ -30,7 +30,7 @@ from core.download_worker import DownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger
+from logs import logger, folder as logs_folder
 
 
 class ConverterWindow(QMainWindow):
@@ -211,11 +211,15 @@ class ConverterWindow(QMainWindow):
         open_output_dir_btn = QPushButton("Open in Folder")
         open_output_dir_btn.setMinimumHeight(42)
         open_output_dir_btn.clicked.connect(self._open_output_dir)
+        open_logs_btn = QPushButton("Open Logs Folder")
+        open_logs_btn.setMinimumHeight(42)
+        open_logs_btn.clicked.connect(self._open_logs_folder)
         output_row = QHBoxLayout()
         output_row.setSpacing(8)
         output_row.addWidget(self.output_path_edit)
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
+        output_row.addWidget(open_logs_btn)
 
     # URL input
         self.url_label = QLabel("YouTube Video URL:")
@@ -267,6 +271,15 @@ class ConverterWindow(QMainWindow):
                 subprocess.Popen(["open", path])
             else:  # Linux and others
                 subprocess.Popen(["xdg-open", path])
+
+    def _open_logs_folder(self) -> None:
+        path = str(logs_folder)
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
 
     def _prompt_initial_output_dir(self) -> None:
         start_dir = self.output_dir if self.output_dir else Path.home()
@@ -429,6 +442,8 @@ class ConverterWindow(QMainWindow):
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Information if is_success else QMessageBox.Warning)
         msg_box.setStandardButtons(QMessageBox.Ok)
+        if not is_success:
+            msg_box.addButton("Export Logs", QMessageBox.ActionRole)
         
         # Apply custom styling
         msg_box.setStyleSheet("""
