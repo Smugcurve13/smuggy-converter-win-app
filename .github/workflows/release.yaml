@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release (Windows)
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python setup ────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # ── 3. Dependencies ────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. PyInstaller build ───────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
+
+
+      # ── 5. Zip artifact ────────────────────────────────────────────────────
+      - name: Zip artifact
+        run: |
+          Compress-Archive `
+            -Path "dist\SmuggyConverter" `
+            -DestinationPath "SmuggyConverter-windows-${{ github.ref_name }}.zip"
+
+      # ── 6. Upload release ──────────────────────────────────────────────────
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SmuggyConverter ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## SmuggyConverter ${{ github.ref_name }}
+
+            A Windows desktop app for downloading and converting media via yt-dlp with a PySide6 GUI.
+
+            ---
+
+            ### Installation
+
+            1. Download **SmuggyConverter-windows-${{ github.ref_name }}.zip** below.
+            2. Extract the zip to any folder.
+            3. Run **SmuggyConverter.exe** — no installation required.
+
+            > **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled — no separate install needed.
+
+            ---
+
+            ### What's Changed
+
+          files: SmuggyConverter-windows-${{ github.ref_name }}.zip

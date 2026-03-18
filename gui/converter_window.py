@@ -30,7 +30,7 @@ from core.download_worker import DownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger
+from logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
 
 
 class ConverterWindow(QMainWindow):
@@ -211,11 +211,15 @@ class ConverterWindow(QMainWindow):
         open_output_dir_btn = QPushButton("Open in Folder")
         open_output_dir_btn.setMinimumHeight(42)
         open_output_dir_btn.clicked.connect(self._open_output_dir)
+        open_logs_btn = QPushButton("Open Logs Folder")
+        open_logs_btn.setMinimumHeight(42)
+        open_logs_btn.clicked.connect(self._open_logs_folder)
         output_row = QHBoxLayout()
         output_row.setSpacing(8)
         output_row.addWidget(self.output_path_edit)
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
+        output_row.addWidget(open_logs_btn)
 
     # URL input
         self.url_label = QLabel("YouTube Video URL:")
@@ -267,6 +271,15 @@ class ConverterWindow(QMainWindow):
                 subprocess.Popen(["open", path])
             else:  # Linux and others
                 subprocess.Popen(["xdg-open", path])
+
+    def _open_logs_folder(self) -> None:
+        path = str(logs_folder)
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
 
     def _prompt_initial_output_dir(self) -> None:
         start_dir = self.output_dir if self.output_dir else Path.home()
@@ -429,27 +442,52 @@ class ConverterWindow(QMainWindow):
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Information if is_success else QMessageBox.Warning)
         msg_box.setStandardButtons(QMessageBox.Ok)
+        if not is_success:
+            export_btn = msg_box.addButton("Export Logs", QMessageBox.ActionRole)
+        else:
+            export_btn = None
         
-        # Apply custom styling
-        msg_box.setStyleSheet("""
-            QMessageBox {
-                background: #1b1b1f;
-            }
-            QMessageBox QLabel {
-                color: #f2f3f7;
-                font-size: 14px;
-            }
-            QPushButton {
-                background: #e65050;
-                color: #fdfdff;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background: #d33b3b;
-            }
-        """)
+        msg_box.setStyleSheet(self._toast_style())
         
         msg_box.exec()
+
+        if export_btn is not None and msg_box.clickedButton() is export_btn:
+            self._export_logs_dialog()
+
+    def _export_logs_dialog(self) -> None:
+        dest, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Logs Zip",
+            default_zip_name(),
+            "Zip Files (*.zip)",
+        )
+        if not dest:
+            return
+        try:
+            zip_path = create_logs_zip(dest)
+            logger.info("Logs exported to %s", zip_path)
+            ok = QMessageBox(self)
+            ok.setWindowTitle("Export Successful")
+            ok.setText(f"Logs saved to:\n{zip_path}")
+            ok.setIcon(QMessageBox.Information)
+            ok.setStandardButtons(QMessageBox.Ok)
+            ok.setStyleSheet(self._toast_style())
+            ok.exec()
+        except Exception as exc:
+            logger.error("Failed to export logs: %s", exc)
+            err = QMessageBox(self)
+            err.setWindowTitle("Export Failed")
+            err.setText(f"Could not export logs:\n{exc}")
+            err.setIcon(QMessageBox.Warning)
+            err.setStandardButtons(QMessageBox.Ok)
+            err.setStyleSheet(self._toast_style())
+            err.exec()
+
+    def _toast_style(self) -> str:
+        return """
+            QMessageBox { background: #1b1b1f; }
+            QMessageBox QLabel { color: #f2f3f7; font-size: 14px; }
+            QPushButton { background: #e65050; color: #fdfdff; border: none;
+                          border-radius: 6px; padding: 8px 16px; font-weight: 600; }
+            QPushButton:hover { background: #d33b3b; }
+        """
