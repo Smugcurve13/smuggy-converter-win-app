@@ -7,7 +7,7 @@ from ffmpeg import Error as FFmpegError
 
 from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
 from config.logs import logger
-from config import FFMPEG_PATH
+from config.config import FFMPEG_PATH
 
 def extract_playlist_info(url):
     ydl_opts = {

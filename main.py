@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.converter_window import ConverterWindow
-from config import icon_path
+from config.config import icon_path
 from config.logs import logger
 
 logger.info("Application started.")

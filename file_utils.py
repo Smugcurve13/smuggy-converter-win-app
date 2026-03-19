@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 import re
 
-from config import OUTPUT_DIR_FILE
+from config.config import OUTPUT_DIR_FILE
 
 DEFAULT_OUTPUT_DIR = Path.cwd() / "output"
 
