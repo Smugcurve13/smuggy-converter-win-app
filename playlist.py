@@ -5,7 +5,7 @@ import datetime
 import ffmpeg
 from ffmpeg import Error as FFmpegError
 
-from file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
+from config.file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
 from config.logs import logger
 from config.config import FFMPEG_PATH
 

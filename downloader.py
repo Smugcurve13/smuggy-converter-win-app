@@ -7,7 +7,7 @@ from config.config import  FFMPEG_PATH , FFPROBE_PATH
 import yt_dlp
 from ffmpeg import Error as FFmpegError
 
-from file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
+from config.file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
 from config.logs import logger
 
 METADATA_EXT = ".metadata.json"
