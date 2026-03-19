@@ -12,10 +12,12 @@ import re
 import typing
 
 from config.logs import logger
+from config.file_utils import MEDIA_DIR
+from config.config import FFMPEG_PATH, FFPROBE_PATH
 
 settings = {
     'format': 'mp3',
-    'output_path': '.',
+    'output_path': MEDIA_DIR,
     'cookie_file': None,
     'platform': 'ytmusic'
 }
@@ -216,6 +218,7 @@ def download_spotify_song(format: typing.Literal["mp3", "flac", "m4a"], metadata
             'preferredcodec': format,
             'preferredquality': '0',
         }],
+        'ffmpeg_location': FFMPEG_PATH,
         'verbose': False,
         'playlist_items': '1',
         'noplaylist': True,
