@@ -7,7 +7,7 @@ from PySide6.QtCore import QThread, Signal
 
 from playlist import extract_playlist_info, extract_video_info_from_array, selected_playlist_videos
 from downloader import download_and_convert
-from logs import logger
+from config.logs import logger
 
 class DownloadWorker(QThread):
     """Worker thread for downloading and converting videos."""

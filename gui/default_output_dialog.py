@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog
 )
 
-from logs import logger
+from config.logs import logger
 
 class DefaultOutputDirDialog(QDialog):
     """Modal dialog for choosing the default output directory."""

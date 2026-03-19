@@ -8,7 +8,7 @@ import yt_dlp
 from ffmpeg import Error as FFmpegError
 
 from file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
-from logs import logger
+from config.logs import logger
 
 METADATA_EXT = ".metadata.json"
 

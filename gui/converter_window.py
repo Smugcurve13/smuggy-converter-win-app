@@ -30,7 +30,7 @@ from core.download_worker import DownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
+from config.logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
 
 
 class ConverterWindow(QMainWindow):
