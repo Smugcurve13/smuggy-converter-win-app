@@ -28,7 +28,7 @@ from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
 from core.download_worker import DownloadWorker
 
-from playlist import extract_playlist_info
+from core.playlist import extract_playlist_info
 from config.config import icon_path, output_dir_file
 from config.logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
 

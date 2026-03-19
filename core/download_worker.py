@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from playlist import extract_playlist_info, extract_video_info_from_array, selected_playlist_videos
+from core.playlist import extract_playlist_info, extract_video_info_from_array, selected_playlist_videos
 from core.downloader import download_and_convert
 from config.logs import logger
 
