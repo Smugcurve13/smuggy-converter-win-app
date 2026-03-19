@@ -58,7 +58,7 @@ def read_exportify_csv_file(file_path: str) -> list:
             for key in keys_to_remove:
                     del song[key]
         except Exception as e:
-            logger.info(f"Some error occurred when handling metadata for song {song['track_name']}, error {e} skipping the song.", style="red")
+            logger.info(f"Some error occurred when handling metadata for song {song['track_name']}, error {e} skipping the song.")
             continue
 
     return songs_list
@@ -260,47 +260,51 @@ def download_spotify_songs_from_list(songs, platform):
     """Download Spotify songs with full metadata"""
     
     total_songs = len(songs)
-    logger.info(f"Starting download of {total_songs} Spotify songs with metadata...", style="bold blue")
+    logger.info(f"Starting download of {total_songs} Spotify songs with metadata...")
     
     for i, song in enumerate(songs):
         try:
             track_name = song.get('track_name', 'Unknown')
             artists = ', '.join(song.get('artist_names', ['Unknown']))
-            logger.info(f"[{i+1}/{total_songs}] Downloading: {track_name} by {artists}", style="cyan")
+            logger.info(f"[{i+1}/{total_songs}] Downloading: {track_name} by {artists}")
             
             download_spotify_song(settings['format'], song, settings['output_path'], settings['cookie_file'], platform)
             try:
-                logger.info(f"✓ Successfully downloaded: {track_name}", style="green")
+                logger.info(f"✓ Successfully downloaded: {track_name}")
             except UnicodeEncodeError:
-                logger.info(f"Successfully downloaded: {track_name}", style="green")
+                logger.info(f"Successfully downloaded: {track_name}")
             
         except Exception as e:
             try:
-                logger.info(f"✗ Failed to download {track_name}: {e}", style="red")
+                logger.info(f"✗ Failed to download {track_name}: {e}")
             except UnicodeEncodeError:
-                logger.info(f"Failed to download {track_name}: {e}", style="red")
+                logger.info(f"Failed to download {track_name}: {e}")
             continue
     
-    logger.info("All Spotify downloads complete!", style="green bold")
+    logger.info("All Spotify downloads complete!")
 
 
 def process_exportify_csv(file_path):
     """Download using Exportify CSV file"""
             
     if not os.path.exists(file_path):
-        logger.info("File not found!", style="red")
+        logger.info("File not found!")
+
         return
     
-    logger.info("Reading CSV file...", style="yellow")
+    logger.info("Reading CSV file...")
     try:
         songs = read_exportify_csv_file(file_path)
-        logger.info("Processing songs...", style="yellow")
+        logger.info("Processing songs...")
         
         if songs:
             download_spotify_songs_from_list(songs, settings['platform'])
         else:
-            logger.info("No songs found in the CSV file", style="yellow")
+            logger.info("No songs found in the CSV file")
         
     except Exception as e:
-        logger.info(f"Error: {e}", style="red")
+        logger.info(f"Error: {e}")
 
+if __name__ == "__main__":
+    # Example usage: process_exportify_csv("path_to_exportify_file.csv")
+    process_exportify_csv(r"c:\Users\ADMIN\Downloads\hype.csv")
