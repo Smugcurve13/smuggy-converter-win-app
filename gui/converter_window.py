@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from gui.default_output_dialog import DefaultOutputDirDialog
 from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
-from core.download_worker import DownloadWorker
+from core.download_worker import DownloadWorker, SpotifyWorker
 
 from core.playlist import extract_playlist_info
 from config.config import icon_path, output_dir_file
@@ -35,16 +35,40 @@ from config.logs import logger, folder as logs_folder, create_logs_zip, default_
 
 class ConverterWindow(QMainWindow):
     def _update_url_mode(self):
-    # Safety check in case UI isn't built yet
-        if not hasattr(self, "url_label") or not hasattr(self, "url_input"):
+        # Safety check in case UI isn't built yet
+        if not hasattr(self, "url_label") or not hasattr(self, "exportify_label"):
             return
 
-        if self.mode_group.buttons()[1].isChecked():  # Playlist
-            self.url_label.setText("YouTube Playlist URL:")
-            self.url_input.setPlaceholderText("https://www.youtube.com/playlist?list=...")
-        else:  # Single video
-            self.url_label.setText("YouTube Video URL:")
-            self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
+        checked = self.mode_group.checkedButton()
+        mode_text = checked.text() if checked else "YT Video"
+
+        if mode_text == "Spotify":
+            self.url_label.setVisible(False)
+            self.url_input.setVisible(False)
+            self.format_label.setVisible(False)
+            self.format_combo.setVisible(False)
+            self.quality_label.setVisible(False)
+            self.quality_combo.setVisible(False)
+            self.exportify_label.setVisible(True)
+            self.exportify_row_widget.setVisible(True)
+            self.format_spotify_label.setVisible(True)
+        else:
+            self.url_label.setVisible(True)
+            self.url_input.setVisible(True)
+            self.format_label.setVisible(True)
+            self.format_combo.setVisible(True)
+            self.quality_label.setVisible(True)
+            self.quality_combo.setVisible(True)
+            self.exportify_label.setVisible(False)
+            self.exportify_row_widget.setVisible(False)
+            self.format_spotify_label.setVisible(False)
+
+            if mode_text == "YT Playlist":
+                self.url_label.setText("YouTube Playlist URL:")
+                self.url_input.setPlaceholderText("https://www.youtube.com/playlist?list=...")
+            else:
+                self.url_label.setText("YouTube Video URL:")
+                self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
 
     def __init__(self) -> None:
         super().__init__()
@@ -92,6 +116,10 @@ class ConverterWindow(QMainWindow):
             QPushButton#mode { background: #17171b; color: #d9dbe2; border: 1px solid #2b2b31;
                                border-radius: 8px; padding: 10px 18px; font-weight: 600; }
             QPushButton#mode:checked { background: #2d2a2f; border-color: #e65050; color: #f5f5f7; }
+            QPushButton#modeSpotify { background: #17171b; color: #d9dbe2; border: 1px solid #2b2b31;
+                               border-radius: 8px; padding: 10px 18px; font-weight: 600; }
+            QPushButton#modeSpotify:checked { background: #0d2b1a; border-color: #1ed760; color: #1ed760; }
+            QPushButton#modeSpotify:hover { background: #152112; border-color: #1db954; }
             QPushButton#convert { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                                                              stop:0 #c13232, stop:1 #c96851);
                                    border-radius: 10px; color: #fdfdff; font-size: 18px;
@@ -180,12 +208,19 @@ class ConverterWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         self.mode_group.buttonClicked.connect(self._update_url_mode)
         
-        for text in ["Single Video", "Playlist"]:
+        for text in ["YT Video", "YT Playlist"]:
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName("mode")
             self.mode_group.addButton(btn)
             modes.addWidget(btn)
+
+        spotify_btn = QPushButton("Spotify")
+        spotify_btn.setCheckable(True)
+        spotify_btn.setObjectName("modeSpotify")
+        self.mode_group.addButton(spotify_btn)
+        modes.addWidget(spotify_btn)
+
         self.mode_group.buttons()[0].setChecked(True)
         modes.addStretch()
         layout.addLayout(modes)
@@ -228,26 +263,56 @@ class ConverterWindow(QMainWindow):
         self.url_input.setMinimumHeight(42)
 
     # Format
-        format_label = QLabel("Output Format:")
+        self.format_label = QLabel("Output Format:")
         self.format_combo = QComboBox()
         self.format_combo.addItems(["MP3 (Audio)"])
         self.format_combo.setMinimumHeight(42)
 
+        self.format_spotify_label = QLabel("Output Format: MP3 (Fixed)")
+        self.format_spotify_label.setStyleSheet(
+            "color: #1ed760; font-size: 15px; font-weight: 600; background: #0d2b1a; "
+            "border: 1px solid #1ed760; border-radius: 8px; padding: 12px;"
+        )
+        self.format_spotify_label.setMinimumHeight(42)
+
     # Quality
-        quality_label = QLabel("Audio Quality:")
+        self.quality_label = QLabel("Audio Quality:")
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(["320 kbps (Highest)", "256 kbps", "192 kbps"])
         self.quality_combo.setMinimumHeight(42)
+
+    # Exportify CSV file row
+        self.exportify_label = QLabel("Exportify CSV File:")
+        self.exportify_input = QLineEdit()
+        self.exportify_input.setPlaceholderText("Path to your Exportify CSV file...")
+        self.exportify_input.setReadOnly(True)
+        self.exportify_input.setMinimumHeight(42)
+        exportify_browse = QPushButton("Browse")
+        exportify_browse.setMinimumHeight(42)
+        exportify_browse.clicked.connect(self._choose_exportify_file)
+        exportify_row_layout = QHBoxLayout()
+        exportify_row_layout.setSpacing(8)
+        exportify_row_layout.addWidget(self.exportify_input)
+        exportify_row_layout.addWidget(exportify_browse)
+        self.exportify_row_widget = QWidget()
+        self.exportify_row_widget.setLayout(exportify_row_layout)
 
     # Build form layout
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
         form_grid.addWidget(self.url_label)
         form_grid.addWidget(self.url_input)
-        form_grid.addWidget(format_label)
+        form_grid.addWidget(self.exportify_label)
+        form_grid.addWidget(self.exportify_row_widget)
+        form_grid.addWidget(self.format_label)
         form_grid.addWidget(self.format_combo)
-        form_grid.addWidget(quality_label)
+        form_grid.addWidget(self.format_spotify_label)
+        form_grid.addWidget(self.quality_label)
         form_grid.addWidget(self.quality_combo)
+
+        self.exportify_label.setVisible(False)
+        self.exportify_row_widget.setVisible(False)
+        self.format_spotify_label.setVisible(False)
 
         card_layout.addLayout(form_grid)
     # Sync label with current mode (important)
@@ -331,18 +396,38 @@ class ConverterWindow(QMainWindow):
         layout.addWidget(note)
         return layout
 
+    def _choose_exportify_file(self) -> None:
+        filepath, _ = QFileDialog.getOpenFileName(self, "Select Exportify CSV File", "", "CSV Files (*.csv)")
+        if filepath:
+            self.exportify_input.setText(filepath)
+
     def _on_convert_clicked(self) -> None:
         if self.worker and self.worker.isRunning():
             return  # Prevent multiple simultaneous downloads
-        
+
         checked = self.mode_group.checkedButton()
-        mode = checked.text().lower() if checked else "single"
+        mode = checked.text().lower() if checked else "yt video"
+
+        if "spotify" in mode:
+            csv_path = self.exportify_input.text().strip()
+            if not csv_path:
+                self._show_toast("Please select an Exportify CSV file", False)
+                return
+            if not os.path.exists(csv_path):
+                self._show_toast("The selected CSV file does not exist", False)
+                return
+            self._start_loading(show_progress=False)
+            self.worker = SpotifyWorker(csv_path, self.output_dir)
+            self.worker.finished.connect(self._on_download_finished)
+            self.worker.start()
+            return
+
         url = self.url_input.text().strip()
-        
+
         if not url:
             self._show_toast("Please enter a YouTube URL", False)
             return
-        
+
         # Check if playlist URL is entered in single video mode
         if "playlist?list=" in url and "playlist" not in mode:
             self._show_toast("Playlist detected: switch modes", False)

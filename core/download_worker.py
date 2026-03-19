@@ -56,3 +56,23 @@ class DownloadWorker(QThread):
         except Exception as e:
             logger.error("Download failed", extra={"error": str(e)})
             self.finished.emit(False, "Failure, please try again later", "")
+
+
+class SpotifyWorker(QThread):
+    """Worker thread for downloading Spotify songs via Exportify CSV."""
+    finished = Signal(bool, str, str)
+
+    def __init__(self, csv_path: str, output_dir: Path):
+        super().__init__()
+        self.csv_path = csv_path
+        self.output_dir = str(output_dir)
+
+    def run(self):
+        try:
+            from core.spotify.helper import process_exportify_csv, settings as spotify_settings
+            spotify_settings['output_path'] = self.output_dir
+            process_exportify_csv(self.csv_path)
+            self.finished.emit(True, "Spotify songs downloaded successfully!", "Spotify")
+        except Exception as e:
+            logger.error("Spotify download failed", extra={"error": str(e)})
+            self.finished.emit(False, f"Spotify download failed: {str(e)}", "")
