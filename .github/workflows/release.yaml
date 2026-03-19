@@ -52,8 +52,6 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            ## SmuggyConverter ${{ github.ref_name }}
-
             A Windows desktop app for downloading and converting media via yt-dlp with a PySide6 GUI.
 
             ---
