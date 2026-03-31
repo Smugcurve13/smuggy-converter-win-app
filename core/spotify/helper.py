@@ -11,7 +11,7 @@ import csv
 import re
 import typing
 
-from config.logs import logger
+from config.logs import logger, ytdlp_capture
 from config.file_utils import MEDIA_DIR
 from config.config import FFMPEG_PATH, FFPROBE_PATH
 
@@ -231,7 +231,10 @@ def download_spotify_song(format: typing.Literal["mp3", "flac", "m4a"], metadata
     # audio download
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.debug("yt-dlp opts (runtime): %s", ydl.params)
             ydl.download([search_input])
+            logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+            ytdlp_capture.fallback_detected = False
 
         downloaded_file_path = os.path.join(output_path, f"{temp_filename}.{format}")
         

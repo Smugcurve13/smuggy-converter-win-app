@@ -6,7 +6,7 @@ import ffmpeg
 from ffmpeg import Error as FFmpegError
 
 from config.file_utils import MEDIA_DIR, sanitize_filename, cleanup_file
-from config.logs import logger
+from config.logs import logger, ytdlp_capture
 from config.config import FFMPEG_PATH
 
 def extract_playlist_info(url):
@@ -20,8 +20,21 @@ def extract_playlist_info(url):
     final_array = []
     playlist_title = "playlist"
     ydl = yt_dlp.YoutubeDL(ydl_opts)
+    logger.debug("yt-dlp opts (runtime): %s", ydl.params)
     try:
         info = ydl.extract_info(url, download=False)
+        if info:
+            logger.debug("yt-dlp extractor      : %s", info.get("extractor"))
+            logger.debug("yt-dlp extractor_key  : %s", info.get("extractor_key"))
+            logger.debug("yt-dlp webpage_url    : %s", info.get("webpage_url"))
+            logger.debug("yt-dlp original_url   : %s", info.get("original_url"))
+        else:
+            logger.error("yt-dlp returned None for URL: %s", url)
+        logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+        ytdlp_capture.fallback_detected = False
+        if not info:
+            logger.error("Extraction failed: yt-dlp returned None")
+            raise RuntimeError("yt-dlp extraction failed")
         # print(type(info))
         # with open("test/debug_info.json", "w", encoding="utf-8") as f:
         #     f.write(json.dumps(info, indent=4))
@@ -107,7 +120,20 @@ def selected_playlist_videos(playlist_title, videos_dict, fmt, quality, target_d
                 "logger": logger,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                logger.debug("yt-dlp opts (runtime): %s", ydl.params)
                 info = ydl.extract_info(value, download=True)
+                if info:
+                    logger.debug("yt-dlp extractor      : %s", info.get("extractor"))
+                    logger.debug("yt-dlp extractor_key  : %s", info.get("extractor_key"))
+                    logger.debug("yt-dlp webpage_url    : %s", info.get("webpage_url"))
+                    logger.debug("yt-dlp original_url   : %s", info.get("original_url"))
+                else:
+                    logger.error("yt-dlp returned None for URL: %s", value)
+                logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+                ytdlp_capture.fallback_detected = False
+                if not info:
+                    logger.error("Extraction failed: yt-dlp returned None")
+                    raise RuntimeError("yt-dlp extraction failed")
                 downloaded_path = ydl.prepare_filename(info)
                 logger.info("Downloaded file", extra={"downloaded_path": downloaded_path})
                 # If the downloaded file is already in the target format and name, just write metadata

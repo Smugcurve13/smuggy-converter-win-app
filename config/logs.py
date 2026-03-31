@@ -3,10 +3,17 @@ import os
 import pathlib
 import subprocess
 import platform
+import shutil
+import socket
+import sys
+import urllib.request
 import zipfile
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
+import yt_dlp
+
+from config.config import FFMPEG_PATH
 from version import __version__
 
 #create dir, create file , initialise logger with formatting , add levels , apply logger to file .
@@ -53,11 +60,75 @@ ytdlp_logger = logging.getLogger('yt_dlp')
 ytdlp_logger.setLevel(logging.DEBUG)
 ytdlp_logger.addHandler(file_handler)
 
+
+class YTDLPLogCapture(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.fallback_detected = False
+
+    def emit(self, record):
+        msg = record.getMessage()
+        if "Redownloading playlist API JSON" in msg:
+            self.fallback_detected = True
+
+
+ytdlp_capture = YTDLPLogCapture()
+ytdlp_logger.addHandler(ytdlp_capture)
+
+
+def _get_ytdlp_version() -> str:
+    try:
+        from yt_dlp.version import __version__ as yt_dlp_version
+
+        return yt_dlp_version
+    except Exception:
+        return "unknown"
+
+
+def _get_js_runtimes() -> str:
+    runtimes = []
+    for runtime in ("node", "bun", "deno"):
+        runtime_path = shutil.which(runtime)
+        if not runtime_path:
+            continue
+        try:
+            version = subprocess.check_output(
+                [runtime, "--version"],
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=2,
+            ).strip().splitlines()[0]
+            runtimes.append(f"{runtime} {version}")
+        except Exception:
+            runtimes.append(f"{runtime} (detected)")
+
+    return ", ".join(runtimes) if runtimes else "None detected"
+
+
+def _get_public_ip() -> str:
+    try:
+        return urllib.request.urlopen("https://api.ipify.org", timeout=2).read().decode()
+    except Exception:
+        return "unavailable"
+
 logger.info("=" * 60)
 logger.info("SmuggyConverter initialized")
 logger.info("Version      : %s", __version__)
 logger.info("OS           : %s %s", platform.system(), platform.version())
 logger.info("Date / Time  : %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+logger.info("")
+logger.info("yt-dlp version : %s", _get_ytdlp_version())
+logger.info("yt-dlp module  : %s", getattr(yt_dlp, "__file__", "unknown"))
+logger.info("")
+logger.info("Python        : %s", sys.version.replace("\n", " "))
+logger.info("Executable    : %s", sys.executable)
+logger.info("")
+actual_ffmpeg = shutil.which("ffmpeg") or FFMPEG_PATH
+logger.info("ffmpeg actual : %s", actual_ffmpeg)
+logger.info("")
+logger.info("Hostname      : %s", socket.gethostname())
+logger.info("JS runtimes   : %s", _get_js_runtimes())
+logger.info("Public IP     : %s", _get_public_ip())
 logger.info("=" * 60)
 
 def create_logs_zip(dest_path: str) -> pathlib.Path:

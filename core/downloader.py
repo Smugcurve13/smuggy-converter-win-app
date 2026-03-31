@@ -8,7 +8,7 @@ import yt_dlp
 from ffmpeg import Error as FFmpegError
 
 from config.file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
-from config.logs import logger
+from config.logs import logger, ytdlp_capture
 
 METADATA_EXT = ".metadata.json"
 
@@ -36,7 +36,20 @@ def download_and_convert(url, fmt, quality, target_dir=None):
     }
     try:
         with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
+            logger.debug("yt-dlp opts (runtime): %s", ydl.params)
             info = ydl.extract_info(url, download=False)
+            if info:
+                logger.debug("yt-dlp extractor      : %s", info.get("extractor"))
+                logger.debug("yt-dlp extractor_key  : %s", info.get("extractor_key"))
+                logger.debug("yt-dlp webpage_url    : %s", info.get("webpage_url"))
+                logger.debug("yt-dlp original_url   : %s", info.get("original_url"))
+            else:
+                logger.error("yt-dlp returned None for URL: %s", url)
+            logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+            ytdlp_capture.fallback_detected = False
+        if not info:
+            logger.error("Extraction failed: yt-dlp returned None")
+            raise RuntimeError("yt-dlp extraction failed")
         logger.info("Fetched info", extra={"title": info.get('title'), "ext": info.get('ext')})
         title = info.get('title', 'downloaded_file')
         safe_title = sanitize_filename(title)
@@ -53,7 +66,20 @@ def download_and_convert(url, fmt, quality, target_dir=None):
             "ignoreerrors": False,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.debug("yt-dlp opts (runtime): %s", ydl.params)
             info = ydl.extract_info(url, download=True)
+            if info:
+                logger.debug("yt-dlp extractor      : %s", info.get("extractor"))
+                logger.debug("yt-dlp extractor_key  : %s", info.get("extractor_key"))
+                logger.debug("yt-dlp webpage_url    : %s", info.get("webpage_url"))
+                logger.debug("yt-dlp original_url   : %s", info.get("original_url"))
+            else:
+                logger.error("yt-dlp returned None for URL: %s", url)
+            logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+            ytdlp_capture.fallback_detected = False
+            if not info:
+                logger.error("Extraction failed: yt-dlp returned None")
+                raise RuntimeError("yt-dlp extraction failed")
             downloaded_path = ydl.prepare_filename(info)
             logger.info("Downloaded file", extra={"downloaded_path": downloaded_path})
             # If the downloaded file is already in the target format and name, just write metadata
@@ -122,7 +148,20 @@ def download_playlist(url, fmt, quality, target_dir=None):
     playlist_title = "playlist"
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.debug("yt-dlp opts (runtime): %s", ydl.params)
             info = ydl.extract_info(url, download=False)
+            if info:
+                logger.debug("yt-dlp extractor      : %s", info.get("extractor"))
+                logger.debug("yt-dlp extractor_key  : %s", info.get("extractor_key"))
+                logger.debug("yt-dlp webpage_url    : %s", info.get("webpage_url"))
+                logger.debug("yt-dlp original_url   : %s", info.get("original_url"))
+            else:
+                logger.error("yt-dlp returned None for URL: %s", url)
+            logger.debug("yt-dlp fallback_detected: %s", ytdlp_capture.fallback_detected)
+            ytdlp_capture.fallback_detected = False
+            if not info:
+                logger.error("Extraction failed: yt-dlp returned None")
+                raise RuntimeError("yt-dlp extraction failed")
             playlist_title = info.get("title", playlist_title)
             if "entries" in info:
                 for entry in info["entries"]:
