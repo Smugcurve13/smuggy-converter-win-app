@@ -37,6 +37,11 @@ FFPROBE_PATH = _ffmpeg_binary("ffprobe")
 # Directory handed to yt-dlp as ffmpeg_location; must hold both binaries.
 FFMPEG_DIR = os.path.dirname(FFMPEG_PATH)
 
+# _ffmpeg_binary falls back to the bare name when it finds nothing, so an
+# absolute path is exactly the signal that a real binary was located.
+# yt-dlp needs ffprobe as well as ffmpeg, so both must resolve.
+FFMPEG_AVAILABLE = os.path.isabs(FFMPEG_PATH) and os.path.isabs(FFPROBE_PATH)
+
 
 if __name__ == "__main__":
     assert _ffmpeg_binary("ffmpeg").endswith(("ffmpeg", "ffmpeg.exe")), FFMPEG_PATH
@@ -45,4 +50,7 @@ if __name__ == "__main__":
     assert _ffmpeg_binary("definitely-not-a-real-binary") == "definitely-not-a-real-binary"
     if sys.platform != "win32":
         assert not FFMPEG_PATH.endswith(".exe"), "must not pick the Windows exe off Windows"
+    # A bare name means nothing was found, and must not read as available.
+    assert FFMPEG_AVAILABLE == os.path.isabs(FFMPEG_PATH) == os.path.isabs(FFPROBE_PATH)
     print(f"ffmpeg : {FFMPEG_PATH}\nffprobe: {FFPROBE_PATH}\ndir    : {FFMPEG_DIR}")
+    print(f"available: {FFMPEG_AVAILABLE}")
