@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, Signal
 
 from playlist import extract_video_info_from_array
 from downloader import download_and_convert, download_selected
+from spotify import download_spotify_csv
 
 
 class DownloadWorker(QThread):
@@ -11,7 +12,7 @@ class DownloadWorker(QThread):
     finished = Signal(bool, str, str)  # success, result_message, video_name
     progress = Signal(int)
 
-    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path, selected_videos: list | None = None, playlist_title: str | None = None):
+    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path, selected_videos: list | None = None, playlist_title: str | None = None, csv_path: str | None = None):
         super().__init__()
         self.mode = mode
         self.url = url
@@ -20,10 +21,26 @@ class DownloadWorker(QThread):
         self.output_dir = str(output_dir)
         self.selected_videos = selected_videos or []
         self.playlist_title = playlist_title or "playlist"
+        self.csv_path = csv_path
 
     def run(self):
         try:
-            if "playlist" in self.mode:
+            if "spotify" in self.mode:
+                done, failed = download_spotify_csv(
+                    self.csv_path,
+                    self.quality,
+                    target_dir=self.output_dir,
+                    progress_callback=self.progress.emit,
+                )
+                if not done:
+                    raise Exception(f"No tracks could be downloaded ({len(failed)} failed)")
+                msg = f"{len(done)} tracks saved"
+                if failed:
+                    msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
+                    if len(failed) > 3:
+                        msg += f" and {len(failed) - 3} more"
+                self.finished.emit(True, msg, "Spotify")
+            elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
                 download_selected(
                     self.playlist_title,

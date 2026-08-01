@@ -66,20 +66,27 @@ def _format_opts(fmt, quality):
     raise ValueError(f"Invalid format: {fmt}")
 
 
-def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None):
-    """Download one URL and produce a single {title}.{fmt} file. The only downloader."""
+def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, title=None):
+    """Download one URL and produce a single {title}.{fmt} file. The only downloader.
+
+    `url` may be any yt-dlp input, including a search like "ytsearch1:some query".
+    Pass `title` to name the file yourself and skip the info round-trip - callers
+    that already know the track name (e.g. Spotify) should.
+    """
     logger.info("Starting download", extra={"url": url, "fmt": fmt, "quality": quality})
     base_dir = target_dir if target_dir else MEDIA_DIR
     os.makedirs(base_dir, exist_ok=True)
 
     opts = _base_opts(progress_callback)
     try:
-        with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-        title = info.get("title", "downloaded_file")
-        logger.info("Fetched info", extra={"title": title, "ext": info.get("ext")})
+        if title is None:
+            with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+            title = info.get("title", "downloaded_file")
+            logger.info("Fetched info", extra={"title": title, "ext": info.get("ext")})
 
-        safe_title = sanitize_filename(title)
+        # An all-non-ASCII title sanitizes to "", which would yield a bare ".mp3".
+        safe_title = sanitize_filename(title) or "download"
         filename = f"{safe_title}.{fmt}"
         opts.update(_format_opts(fmt, quality))
         # Postprocessors decide the final extension; %(ext)s lets them.

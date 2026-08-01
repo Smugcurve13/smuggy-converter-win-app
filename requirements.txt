@@ -1,5 +1,6 @@
 altgraph==0.17.5
 certifi==2026.5.20
+mutagen==1.48.1
 packaging==26.0
 pefile==2024.8.26
 pyinstaller==6.18.0

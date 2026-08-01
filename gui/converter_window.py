@@ -34,17 +34,36 @@ from logs import logger, folder as logs_folder, create_logs_zip, default_zip_nam
 
 
 class ConverterWindow(QMainWindow):
+    def _current_mode(self) -> str:
+        checked = self.mode_group.checkedButton()
+        return checked.text().lower() if checked else "yt video"
+
     def _update_url_mode(self):
     # Safety check in case UI isn't built yet
-        if not hasattr(self, "url_label") or not hasattr(self, "url_input"):
+        if not hasattr(self, "url_label") or not hasattr(self, "csv_row"):
             return
 
-        if self.mode_group.buttons()[1].isChecked():  # Playlist
+        mode = self._current_mode()
+        spotify = "spotify" in mode
+
+        # Spotify takes a CSV instead of a URL, and is always MP3.
+        for w in (self.url_label, self.url_input, self.format_label, self.format_combo):
+            w.setVisible(not spotify)
+        for w in (self.csv_label, self.csv_row):
+            w.setVisible(spotify)
+
+        if spotify:
+            self.quality_label.setText("Audio Quality:")
+            self.accent.setText("from Spotify")
+        elif "playlist" in mode:
             self.url_label.setText("YouTube Playlist URL:")
             self.url_input.setPlaceholderText("https://www.youtube.com/playlist?list=...")
-        else:  # Single video
+        else:
             self.url_label.setText("YouTube Video URL:")
             self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
+
+        if not spotify:
+            self._update_quality_options()
 
     def __init__(self) -> None:
         super().__init__()
@@ -92,6 +111,10 @@ class ConverterWindow(QMainWindow):
             QPushButton#mode { background: #17171b; color: #d9dbe2; border: 1px solid #2b2b31;
                                border-radius: 8px; padding: 10px 18px; font-weight: 600; }
             QPushButton#mode:checked { background: #2d2a2f; border-color: #e65050; color: #f5f5f7; }
+            QPushButton#modeSpotify { background: #17171b; color: #d9dbe2; border: 1px solid #2b2b31;
+                                      border-radius: 8px; padding: 10px 18px; font-weight: 600; }
+            QPushButton#modeSpotify:hover { background: #152112; border-color: #1db954; }
+            QPushButton#modeSpotify:checked { background: #0d2b1a; border-color: #1ed760; color: #1ed760; }
             QPushButton#convert { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                                                              stop:0 #c13232, stop:1 #c96851);
                                    border-radius: 10px; color: #fdfdff; font-size: 18px;
@@ -180,10 +203,10 @@ class ConverterWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         self.mode_group.buttonClicked.connect(self._update_url_mode)
         
-        for text in ["Single Video", "Playlist"]:
+        for text in ["YT Video", "YT Playlist", "Spotify"]:
             btn = QPushButton(text)
             btn.setCheckable(True)
-            btn.setObjectName("mode")
+            btn.setObjectName("modeSpotify" if text == "Spotify" else "mode")
             self.mode_group.addButton(btn)
             modes.addWidget(btn)
         self.mode_group.buttons()[0].setChecked(True)
@@ -227,8 +250,25 @@ class ConverterWindow(QMainWindow):
         self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
         self.url_input.setMinimumHeight(42)
 
+    # Exportify CSV (Spotify mode only)
+        self.csv_label = QLabel("Exportify CSV File:")
+        self.csv_input = QLineEdit()
+        self.csv_input.setPlaceholderText("Export your playlist at exportify.net, then pick the CSV")
+        self.csv_input.setReadOnly(True)
+        self.csv_input.setMinimumHeight(42)
+        csv_browse = QPushButton("Browse")
+        csv_browse.setMinimumHeight(42)
+        csv_browse.clicked.connect(self._choose_csv)
+        csv_layout = QHBoxLayout()
+        csv_layout.setSpacing(8)
+        csv_layout.setContentsMargins(0, 0, 0, 0)
+        csv_layout.addWidget(self.csv_input)
+        csv_layout.addWidget(csv_browse)
+        self.csv_row = QWidget()
+        self.csv_row.setLayout(csv_layout)
+
     # Format
-        format_label = QLabel("Output Format:")
+        self.format_label = QLabel("Output Format:")
         self.format_combo = QComboBox()
         self.format_combo.addItems(["MP3 (Audio)", "MP4 (Video)"])
         self.format_combo.setMinimumHeight(42)
@@ -244,16 +284,25 @@ class ConverterWindow(QMainWindow):
         form_grid.addLayout(output_row)
         form_grid.addWidget(self.url_label)
         form_grid.addWidget(self.url_input)
-        form_grid.addWidget(format_label)
+        form_grid.addWidget(self.csv_label)
+        form_grid.addWidget(self.csv_row)
+        form_grid.addWidget(self.format_label)
         form_grid.addWidget(self.format_combo)
         form_grid.addWidget(self.quality_label)
         form_grid.addWidget(self.quality_combo)
 
         card_layout.addLayout(form_grid)
     # Sync labels with current mode / format (important)
-        self._update_url_mode()
         self._update_quality_options()
+        self._update_url_mode()
         return card
+
+    def _choose_csv(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Exportify CSV File", str(self.output_dir or Path.home()), "CSV Files (*.csv)"
+        )
+        if path:
+            self.csv_input.setText(path)
 
     def _update_quality_options(self) -> None:
         """Swap the quality dropdown between audio bitrates and video resolutions."""
@@ -354,26 +403,42 @@ class ConverterWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return  # Prevent multiple simultaneous downloads
         
-        checked = self.mode_group.checkedButton()
-        mode = checked.text().lower() if checked else "single"
+        mode = self._current_mode()
+        quality_text = self.quality_combo.currentText()
+        digits = "".join(ch for ch in quality_text if ch.isdigit())
+        quality = int(digits) if digits else None
+
+        if "spotify" in mode:
+            csv_path = self.csv_input.text().strip()
+            if not csv_path:
+                self._show_toast("Please select an Exportify CSV file", False)
+                return
+            if not os.path.exists(csv_path):
+                self._show_toast("The selected CSV file no longer exists", False)
+                return
+            logger.info("Convert clicked", extra={"mode": mode, "csv": csv_path, "quality": quality})
+            self._start_loading(show_progress=True)
+            self.worker = DownloadWorker(mode, "", "mp3", quality, self.output_dir, csv_path=csv_path)
+            self.worker.progress.connect(self._on_download_progress)
+            self.worker.finished.connect(self._on_download_finished)
+            self.worker.start()
+            return
+
         url = self.url_input.text().strip()
-        
+
         if not url:
             self._show_toast("Please enter a YouTube URL", False)
             return
-        
+
         # Check if playlist URL is entered in single video mode
         if "playlist?list=" in url and "playlist" not in mode:
             self._show_toast("Playlist detected: switch modes", False)
             return
-        
+
         fmt = self._current_format()
-        quality_text = self.quality_combo.currentText()
-        digits = "".join(ch for ch in quality_text if ch.isdigit())
-        quality = int(digits) if digits else None
-        
+
         logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
-        
+
         # If playlist mode, show selection dialog first
         if "playlist" in mode:
             try:
