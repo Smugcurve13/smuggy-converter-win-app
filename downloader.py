@@ -1,173 +1,119 @@
-import json
 import os
-from datetime import datetime, timezone
 
-import ffmpeg 
-from config import  FFMPEG_PATH , FFPROBE_PATH
 import yt_dlp
-from ffmpeg import Error as FFmpegError
 
-from file_utils import sanitize_filename,cleanup_file, MEDIA_DIR
+from config import FFMPEG_DIR
+from file_utils import sanitize_filename, MEDIA_DIR
 from logs import logger
 
-METADATA_EXT = ".metadata.json"
+
+def _progress_hook(callback):
+    """Translate yt-dlp's byte counts into a 0-100 percentage."""
+    def hook(d):
+        if d.get("status") != "downloading":
+            return
+        total = d.get("total_bytes") or d.get("total_bytes_estimate")
+        if total:
+            # ponytail: mp4 pulls video then audio, so this sweeps 0-100 twice.
+            # Fine for a progress bar; weight by stream size if it ever matters.
+            callback(min(100, int(d.get("downloaded_bytes", 0) / total * 100)))
+    return hook
 
 
-def write_metadata(file_id, base_dir=None):
-    metadata = {"timestamp": datetime.now(timezone.utc).isoformat()}
-    target_dir = base_dir if base_dir else MEDIA_DIR
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir, exist_ok=True)
-    meta_path = os.path.join(target_dir, file_id + METADATA_EXT)
-    with open(meta_path, "w") as f:
-        json.dump(metadata, f)  
-
-def download_and_convert(url, fmt, quality, target_dir=None):
-    logger.info("Starting download", extra={"url": url, "fmt": fmt, "quality": quality})
-    base_dir = target_dir if target_dir else MEDIA_DIR
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir, exist_ok=True)
-    ext = fmt
-    ydl_info_opts = {
+def _base_opts(progress_callback=None):
+    opts = {
+        "noplaylist": True,
         "quiet": True,
         "ignoreerrors": False,
-        "noplaylist": True,
-        "skip_download": True,
+        "logger": logger,
+        "ffmpeg_location": FFMPEG_DIR,
     }
-    try:
-        with yt_dlp.YoutubeDL(ydl_info_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-        logger.info("Fetched info", extra={"title": info.get('title'), "ext": info.get('ext')})
-        title = info.get('title', 'downloaded_file')
-        safe_title = sanitize_filename(title)
-        filename = f"{safe_title}.{ext}"
-        target_path = os.path.join(base_dir, filename)
-        # Always download to a temp file to avoid in-place overwrite
-        temp_filename = f"{safe_title}_temp.{info.get('ext', ext)}"
-        temp_path = os.path.join(base_dir, temp_filename)
-        ydl_opts = {
-            "outtmpl": temp_path,
-            "format": "bestaudio/best" if fmt == "mp3" else "bestvideo+bestaudio/best",
-            "noplaylist": True,
-            "quiet": True,
-            "ignoreerrors": False,
+    if progress_callback:
+        opts["progress_hooks"] = [_progress_hook(progress_callback)]
+    return opts
+
+
+def _format_opts(fmt, quality):
+    """Format-specific yt-dlp options. Conversion is left to yt-dlp's postprocessors."""
+    if fmt == "mp3":
+        return {
+            "format": "bestaudio/best",
+            "writethumbnail": True,  # EmbedThumbnail needs this; yt-dlp cleans it up after
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": str(quality or 320),
+                },
+                {"key": "FFmpegMetadata"},  # title/artist/album/date, whatever the extractor has
+                {"key": "EmbedThumbnail"},  # cover art
+            ],
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            downloaded_path = ydl.prepare_filename(info)
-            logger.info("Downloaded file", extra={"downloaded_path": downloaded_path})
-            # If the downloaded file is already in the target format and name, just write metadata
-            if os.path.abspath(downloaded_path) == os.path.abspath(target_path):
-                write_metadata(filename)
-                return filename
-            if fmt == "mp3":
-                try:
-                    (
-                        ffmpeg
-                        .input(downloaded_path)
-                        .output(target_path, audio_bitrate=f"{quality}k" if quality else "320k", format="mp3", acodec="libmp3lame")
-                        .run(
-                    cmd=FFMPEG_PATH,
-    overwrite_output=True,
-    capture_stdout=True,
-    capture_stderr=True
-))
-                except FFmpegError as fe:
-                    cleanup_file(downloaded_path)
-                    err = fe.stderr.decode('utf-8', errors='ignore')
-                    logger.error("FFmpeg mp3 error", extra={"error": err})
-                    raise Exception(f"ffmpeg error: {err}")
-                cleanup_file(downloaded_path)
-                write_metadata(filename, base_dir)
-                logger.info(f"Converted and saved: {filename}")
-                logger.info("MP3 conversion complete", extra={"target_path": target_path})
-                return filename
-            elif fmt == "mp4":
-                try:
-                    (
-                        ffmpeg
-                        .input(downloaded_path)
-                        .output(target_path, video_bitrate=f"{quality}k" if quality else None, format="mp4", vcodec="libx264", acodec="aac")
-                       .run(
-    cmd=FFMPEG_PATH,
-    overwrite_output=True,
-    capture_stdout=True,
-    capture_stderr=True
-)
-                    )
-                except FFmpegError as fe:
-                    cleanup_file(downloaded_path)
-                    err = fe.stderr.decode('utf-8', errors='ignore')
-                    logger.error("FFmpeg mp4 error", extra={"error": err})
-                    raise Exception(f"ffmpeg error: {err}")
-                cleanup_file(downloaded_path)
-                write_metadata(filename, base_dir)
-                logger.info("MP4 conversion complete", extra={"target_path": target_path})
-                return filename
-            else:
-                raise ValueError("Invalid format")
-    except Exception as e:
-            logger.error("Download/convert failed", extra={"error": str(e)})
-            raise Exception(f"Download/convert error: {e}")
+    if fmt == "mp4":
+        h = quality or 1080
+        return {
+            # Remux, not re-encode: seconds instead of minutes. Prefer H.264+AAC —
+            # "best" at a given height is often AV1/Opus, which QuickTime and most
+            # devices refuse to play. Falls back to any codec if avc1 isn't offered.
+            "format": (
+                f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+                f"bestvideo[height<={h}]+bestaudio/"
+                f"best[height<={h}]"
+            ),
+            "merge_output_format": "mp4",
+            "postprocessors": [{"key": "FFmpegMetadata"}],
+        }
+    raise ValueError(f"Invalid format: {fmt}")
 
 
-def download_playlist(url, fmt, quality, target_dir=None):
-    logger.info("Starting playlist download", extra={"url": url, "fmt": fmt, "quality": quality})
-    ydl_opts = {
-        "extract_flat": True,
-        "quiet": True,
-        "ignoreerrors": True,
-    }
-    video_urls = []
-    playlist_title = "playlist"
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            playlist_title = info.get("title", playlist_title)
-            if "entries" in info:
-                for entry in info["entries"]:
-                    if entry and "id" in entry:
-                        video_urls.append(f"https://www.youtube.com/watch?v={entry['id']}")
-        logger.info("Playlist entries fetched", extra={"count": len(video_urls)})
-    except Exception as e:
-        print(f"Failed to extract playlist: {e}")
-        logger.error("Failed to extract playlist", extra={"error": str(e)})
-        return
+def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, title=None):
+    """Download one URL and produce a single {title}.{fmt} file. The only downloader.
 
-    playlist_safe = sanitize_filename(playlist_title)
+    `url` may be any yt-dlp input, including a search like "ytsearch1:some query".
+    Pass `title` to name the file yourself and skip the info round-trip - callers
+    that already know the track name (e.g. Spotify) should.
+    """
+    logger.info("Starting download", extra={"url": url, "fmt": fmt, "quality": quality})
     base_dir = target_dir if target_dir else MEDIA_DIR
-    playlist_dir = os.path.join(base_dir, playlist_safe)
-    if not os.path.exists(playlist_dir):
-        os.makedirs(playlist_dir, exist_ok=True)
+    os.makedirs(base_dir, exist_ok=True)
 
-    results = []
-    total = len(video_urls)
-    for idx, vurl in enumerate(video_urls):
-        try:
-            file_id = download_and_convert(vurl, fmt, quality, target_dir=playlist_dir)
-            results.append({"url": vurl, "file_id": file_id, "status": "success"})
-        except Exception as e:
-            results.append({"url": vurl, "error": str(e), "status": "failed"})
-            logger.error("Item failed", extra={"url": vurl, "error": str(e)})
-        progress = int(((idx + 1) / total) * 100) if total else 100
-        logger.info("Playlist progress", extra={"progress": progress, "completed": idx + 1, "total": total})
-    return results
-
-def download_batch(urls, fmt, quality, job_id):
-    results = []
-    total = len(urls)
-    for idx, url in enumerate(urls):
-        try:
-            file_id = download_and_convert(url, fmt, quality)
-            results.append({"url": url, "file_id": file_id, "status": "success"})
-        except Exception as e:
-            results.append({"url": url, "error": str(e), "status": "failed"})
-        progress = int(((idx + 1) / total) * 100) if total else 100
-
-if __name__ == "__main__":
-    test_url = "https://www.youtube.com/watch?v=DxsDekHDKXo"
+    opts = _base_opts(progress_callback)
     try:
-        file_id = download_and_convert(test_url, "mp3", 320)
-        print(f"Downloaded and converted file ID: {file_id}")
+        if title is None:
+            with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+            title = info.get("title", "downloaded_file")
+            logger.info("Fetched info", extra={"title": title, "ext": info.get("ext")})
+
+        # An all-non-ASCII title sanitizes to "", which would yield a bare ".mp3".
+        safe_title = sanitize_filename(title) or "download"
+        filename = f"{safe_title}.{fmt}"
+        opts.update(_format_opts(fmt, quality))
+        # Postprocessors decide the final extension; %(ext)s lets them.
+        opts["outtmpl"] = os.path.join(base_dir, f"{safe_title}.%(ext)s")
+
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.extract_info(url, download=True)
+
+        logger.info("Conversion complete", extra={"path": os.path.join(base_dir, filename)})
+        return filename
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Download/convert failed", extra={"url": url, "error": str(e)})
+        raise
+
+
+def download_selected(playlist_title, videos_dict, fmt, quality, target_dir=None,
+                      progress_callback=None):
+    """Download the picked videos into a playlist subfolder. Progress ticks per video."""
+    base_dir = target_dir if target_dir else MEDIA_DIR
+    playlist_dir = os.path.join(base_dir, sanitize_filename(playlist_title))
+    os.makedirs(playlist_dir, exist_ok=True)
+
+    results = []
+    total = len(videos_dict)
+    for idx, url in enumerate(videos_dict.values()):
+        results.append(download_and_convert(url, fmt, quality, target_dir=playlist_dir))
+        if progress_callback:
+            progress_callback(int((idx + 1) / total * 100) if total else 100)
+    logger.info("Playlist complete", extra={"playlist": playlist_title, "count": len(results)})
+    return results

@@ -1,12 +1,16 @@
 import logging
 import os
 import pathlib
+import shutil
+import socket
 import subprocess
+import sys
 import platform
 import zipfile
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
+from config import FFMPEG_PATH, FFPROBE_PATH
 from version import __version__
 
 #create dir, create file , initialise logger with formatting , add levels , apply logger to file .
@@ -23,10 +27,10 @@ folder = f"{home_folder}/{FOLDERNAME}"
 if not os.path.exists(folder):
     os.makedirs(folder, exist_ok=True)
 
-# Build today's log filename: smuggyconverter_logs_YYYY-MM-DD.txt
-today_str = datetime.now().strftime("%Y-%m-%d")
-log_filename = f"smuggyconverter_logs_{today_str}.txt"
-file = pathlib.Path(f"{folder}/{log_filename}")
+# Static base name: the handler appends the date on rollover. Putting the date in
+# the base name too produced smuggyconverter_logs_2026-07-31.txt.2026-08-01.txt and
+# stopped backupCount from ever pruning.
+file = pathlib.Path(f"{folder}/smuggyconverter.log")
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -43,7 +47,22 @@ file_handler = TimedRotatingFileHandler(
 file_handler.suffix = "%Y-%m-%d.txt"
 file_handler.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+# logging only renders `extra` fields a format string names, so every
+# logger.error(..., extra={"error": e}) in this codebase used to vanish. Appending
+# the non-standard record attributes here fixes all of those call sites at once.
+_STD_RECORD_KEYS = set(
+    logging.LogRecord("", 0, "", 0, "", None, None).__dict__
+) | {"message", "asctime", "taskName"}
+
+
+class ExtraFormatter(logging.Formatter):
+    def format(self, record):
+        base = super().format(record)
+        extras = {k: v for k, v in record.__dict__.items() if k not in _STD_RECORD_KEYS}
+        return f"{base} | {extras}" if extras else base
+
+
+formatter = ExtraFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 file_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
@@ -53,11 +72,49 @@ ytdlp_logger = logging.getLogger('yt_dlp')
 ytdlp_logger.setLevel(logging.DEBUG)
 ytdlp_logger.addHandler(file_handler)
 
+def _ytdlp_version() -> str:
+    try:
+        from yt_dlp.version import __version__ as v
+
+        return v
+    except Exception:
+        return "unknown"
+
+
+def _js_runtimes() -> str:
+    """yt-dlp leans on a JS runtime for some extractors; note which are present."""
+    found = []
+    for runtime in ("node", "bun", "deno"):
+        if not shutil.which(runtime):
+            continue
+        try:
+            out = subprocess.run(
+                [runtime, "--version"],
+                capture_output=True, text=True, timeout=2,
+                # Keeps a console window from flashing on Windows.
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            found.append(f"{runtime} {out.stdout.strip().splitlines()[0]}")
+        except Exception:
+            found.append(f"{runtime} (detected)")
+    return ", ".join(found) if found else "None detected"
+
+
+# Diagnostics worth having in a support log. Deliberately no public-IP lookup:
+# it is PII in a file users email us, and it puts a network call on startup.
 logger.info("=" * 60)
 logger.info("SmuggyConverter initialized")
 logger.info("Version      : %s", __version__)
 logger.info("OS           : %s %s", platform.system(), platform.version())
 logger.info("Date / Time  : %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+logger.info("Hostname     : %s", socket.gethostname())
+logger.info("Python       : %s", sys.version.replace("\n", " "))
+logger.info("Executable   : %s", sys.executable)
+logger.info("Frozen       : %s", bool(getattr(sys, "frozen", False)))
+logger.info("yt-dlp       : %s", _ytdlp_version())
+logger.info("ffmpeg       : %s", FFMPEG_PATH)
+logger.info("ffprobe      : %s", FFPROBE_PATH)
+logger.info("JS runtimes  : %s", _js_runtimes())
 logger.info("=" * 60)
 
 def create_logs_zip(dest_path: str) -> pathlib.Path:
