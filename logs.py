@@ -23,10 +23,10 @@ folder = f"{home_folder}/{FOLDERNAME}"
 if not os.path.exists(folder):
     os.makedirs(folder, exist_ok=True)
 
-# Build today's log filename: smuggyconverter_logs_YYYY-MM-DD.txt
-today_str = datetime.now().strftime("%Y-%m-%d")
-log_filename = f"smuggyconverter_logs_{today_str}.txt"
-file = pathlib.Path(f"{folder}/{log_filename}")
+# Static base name: the handler appends the date on rollover. Putting the date in
+# the base name too produced smuggyconverter_logs_2026-07-31.txt.2026-08-01.txt and
+# stopped backupCount from ever pruning.
+file = pathlib.Path(f"{folder}/smuggyconverter.log")
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -43,7 +43,22 @@ file_handler = TimedRotatingFileHandler(
 file_handler.suffix = "%Y-%m-%d.txt"
 file_handler.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+# logging only renders `extra` fields a format string names, so every
+# logger.error(..., extra={"error": e}) in this codebase used to vanish. Appending
+# the non-standard record attributes here fixes all of those call sites at once.
+_STD_RECORD_KEYS = set(
+    logging.LogRecord("", 0, "", 0, "", None, None).__dict__
+) | {"message", "asctime", "taskName"}
+
+
+class ExtraFormatter(logging.Formatter):
+    def format(self, record):
+        base = super().format(record)
+        extras = {k: v for k, v in record.__dict__.items() if k not in _STD_RECORD_KEYS}
+        return f"{base} | {extras}" if extras else base
+
+
+formatter = ExtraFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 file_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)

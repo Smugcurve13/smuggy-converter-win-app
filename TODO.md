@@ -15,7 +15,7 @@ Features:
 - [x] Allow user to pick which videos to download from playlist
 - [x] Toast message on success / failure
 - [x] Reduce package size
-- [ ] MP4 download toggle
+- [x] MP4 download toggle
 - [ ] Limit MP4 downloads to prevent YouTube flagging IP (~ 50 in a playlist)
 - [ ] Distribution - Package .exe and .dmg and upload to GitHub
 - [ ] Package for Linux

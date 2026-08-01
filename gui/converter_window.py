@@ -146,12 +146,12 @@ class ConverterWindow(QMainWindow):
         title_row = QHBoxLayout()
         title = QLabel("Convert YouTube Videos")
         title.setObjectName("headline")
-        accent = QLabel("to MP3")
-        accent.setObjectName("headlineAccent")
+        self.accent = QLabel("to MP3")
+        self.accent.setObjectName("headlineAccent")
         title_row.addStretch()
         title_row.addWidget(title)
         title_row.addSpacing(10)
-        title_row.addWidget(accent)
+        title_row.addWidget(self.accent)
         title_row.addStretch()
         layout.addLayout(title_row)
         
@@ -230,13 +230,13 @@ class ConverterWindow(QMainWindow):
     # Format
         format_label = QLabel("Output Format:")
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["MP3 (Audio)"])
+        self.format_combo.addItems(["MP3 (Audio)", "MP4 (Video)"])
         self.format_combo.setMinimumHeight(42)
+        self.format_combo.currentTextChanged.connect(self._update_quality_options)
 
     # Quality
-        quality_label = QLabel("Audio Quality:")
+        self.quality_label = QLabel("Audio Quality:")
         self.quality_combo = QComboBox()
-        self.quality_combo.addItems(["320 kbps (Highest)", "256 kbps", "192 kbps"])
         self.quality_combo.setMinimumHeight(42)
 
     # Build form layout
@@ -246,13 +246,32 @@ class ConverterWindow(QMainWindow):
         form_grid.addWidget(self.url_input)
         form_grid.addWidget(format_label)
         form_grid.addWidget(self.format_combo)
-        form_grid.addWidget(quality_label)
+        form_grid.addWidget(self.quality_label)
         form_grid.addWidget(self.quality_combo)
 
         card_layout.addLayout(form_grid)
-    # Sync label with current mode (important)
+    # Sync labels with current mode / format (important)
         self._update_url_mode()
+        self._update_quality_options()
         return card
+
+    def _update_quality_options(self) -> None:
+        """Swap the quality dropdown between audio bitrates and video resolutions."""
+        # Each entry must contain exactly one number - _on_convert_clicked parses it
+        # by joining the digits.
+        if self._current_format() == "mp3":
+            self.quality_label.setText("Audio Quality:")
+            items = ["320 kbps (Highest)", "256 kbps", "192 kbps"]
+            self.accent.setText("to MP3")
+        else:
+            self.quality_label.setText("Video Quality:")
+            items = ["1080p", "720p", "480p"]
+            self.accent.setText("to MP4")
+        self.quality_combo.clear()
+        self.quality_combo.addItems(items)
+
+    def _current_format(self) -> str:
+        return "mp3" if "mp3" in self.format_combo.currentText().lower() else "mp4"
 
     def _choose_output_dir(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Select Output Folder", str(self.output_dir))
@@ -348,8 +367,7 @@ class ConverterWindow(QMainWindow):
             self._show_toast("Playlist detected: switch modes", False)
             return
         
-        fmt_text = self.format_combo.currentText().lower()
-        fmt = "mp3" if "mp3" in fmt_text else "mp4"
+        fmt = self._current_format()
         quality_text = self.quality_combo.currentText()
         digits = "".join(ch for ch in quality_text if ch.isdigit())
         quality = int(digits) if digits else None
@@ -386,10 +404,11 @@ class ConverterWindow(QMainWindow):
                 return
         else:
             # Start spinner and disable button
-            self._start_loading(show_progress=False)
-            
+            self._start_loading(show_progress=True)
+
             # Create and start worker thread
             self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+            self.worker.progress.connect(self._on_download_progress)
             self.worker.finished.connect(self._on_download_finished)
             self.worker.start()
     
@@ -428,8 +447,7 @@ class ConverterWindow(QMainWindow):
         
         if success:
             logger.info("Download completed successfully", extra={"video_name": video_name})
-        else:
-            logger.error("Download failed", extra={"error": message})
+        # Failures are already logged with full context in downloader.py.
 
     def _on_download_progress(self, percent: int):
         self.progress_bar.setValue(percent)
