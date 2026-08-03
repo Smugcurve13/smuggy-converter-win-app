@@ -20,7 +20,7 @@ def _progress_hook(callback):
     return hook
 
 
-def _base_opts(progress_callback=None):
+def _base_opts(progress_callback=None, throttle=False):
     opts = {
         "noplaylist": True,
         "quiet": True,
@@ -28,45 +28,77 @@ def _base_opts(progress_callback=None):
         "logger": logger,
         "ffmpeg_location": FFMPEG_DIR,
     }
+    if throttle:
+        # Back-to-back requests earn "HTTP Error 403: Forbidden" partway through a
+        # batch. yt-dlp's randomised pause between downloads avoids that.
+        opts["sleep_interval"] = 1
+        opts["max_sleep_interval"] = 4
     if progress_callback:
         opts["progress_hooks"] = [_progress_hook(progress_callback)]
     return opts
 
 
-def _format_opts(fmt, quality):
-    """Format-specific yt-dlp options. Conversion is left to yt-dlp's postprocessors."""
+def _format_opts(fmt, quality, source_metadata=True):
+    """Format-specific yt-dlp options. Conversion is left to yt-dlp's postprocessors.
+
+    source_metadata=False omits the tagging/thumbnail postprocessors. Callers that
+    supply their own authoritative tags (Spotify) should pass False — otherwise
+    the source's title, description, lyrics and thumbnail get written first and
+    have to be scrubbed back out.
+    """
     if fmt == "mp3":
-        return {
+        opts = {
             "format": "bestaudio/best",
-            "writethumbnail": True,  # EmbedThumbnail needs this; yt-dlp cleans it up after
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": str(quality or 320),
                 },
-                {"key": "FFmpegMetadata"},  # title/artist/album/date, whatever the extractor has
-                {"key": "EmbedThumbnail"},  # cover art
             ],
         }
+        if source_metadata:
+            opts["writethumbnail"] = True  # EmbedThumbnail needs this; yt-dlp cleans up after
+            opts["postprocessors"] += [
+                {"key": "FFmpegMetadata"},  # title/artist/album/date, whatever the extractor has
+                {"key": "EmbedThumbnail"},  # cover art
+            ]
+        return opts
     if fmt == "mp4":
         h = quality or 1080
+        # Remux, not re-encode: seconds instead of minutes.
+        #
+        # H.264 is only worth asking for at 1080p and below - YouTube ships none
+        # above that. Asking anyway is actively harmful: an avc1 tier matches at
+        # ANY height under the cap, so a 1080p H.264 stream beats a 2160p AV1 one
+        # and "4K" silently yields 1080p.
+        #
+        # Above 1080p, take the best resolution and let yt-dlp's default codec
+        # order apply - it already ranks av01 over vp9, and AV1 is the one that
+        # belongs in an MP4 container. Resolution outranks codec in the default
+        # sort, so no custom format_sort is needed (and a custom one would hurt:
+        # "vcodec:h264" flattens the rest and lets VP9 beat AV1).
+        prefer_h264 = (
+            f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+            if h <= 1080 else ""
+        )
         return {
-            # Remux, not re-encode: seconds instead of minutes. Prefer H.264+AAC —
-            # "best" at a given height is often AV1/Opus, which QuickTime and most
-            # devices refuse to play. Falls back to any codec if avc1 isn't offered.
             "format": (
-                f"bestvideo[height<={h}][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+                f"{prefer_h264}"
+                # AAC explicitly: left alone yt-dlp picks Opus, the same
+                # MP4-container playback problem AV1 has.
+                f"bestvideo[height<={h}]+bestaudio[acodec^=mp4a]/"
                 f"bestvideo[height<={h}]+bestaudio/"
                 f"best[height<={h}]"
             ),
             "merge_output_format": "mp4",
-            "postprocessors": [{"key": "FFmpegMetadata"}],
+            "postprocessors": [{"key": "FFmpegMetadata"}] if source_metadata else [],
         }
     raise ValueError(f"Invalid format: {fmt}")
 
 
-def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, title=None):
+def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, title=None,
+                         source_metadata=True, throttle=False):
     """Download one URL and produce a single {title}.{fmt} file. The only downloader.
 
     `url` may be any yt-dlp input, including a search like "ytsearch1:some query".
@@ -77,7 +109,7 @@ def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=N
     base_dir = target_dir if target_dir else MEDIA_DIR
     os.makedirs(base_dir, exist_ok=True)
 
-    opts = _base_opts(progress_callback)
+    opts = _base_opts(progress_callback, throttle)
     try:
         if title is None:
             with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
@@ -88,7 +120,7 @@ def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=N
         # An all-non-ASCII title sanitizes to "", which would yield a bare ".mp3".
         safe_title = sanitize_filename(title) or "download"
         filename = f"{safe_title}.{fmt}"
-        opts.update(_format_opts(fmt, quality))
+        opts.update(_format_opts(fmt, quality, source_metadata))
         # Postprocessors decide the final extension; %(ext)s lets them.
         opts["outtmpl"] = os.path.join(base_dir, f"{safe_title}.%(ext)s")
 
@@ -112,7 +144,8 @@ def download_selected(playlist_title, videos_dict, fmt, quality, target_dir=None
     results = []
     total = len(videos_dict)
     for idx, url in enumerate(videos_dict.values()):
-        results.append(download_and_convert(url, fmt, quality, target_dir=playlist_dir))
+        results.append(download_and_convert(url, fmt, quality, target_dir=playlist_dir,
+                                            throttle=True))
         if progress_callback:
             progress_callback(int((idx + 1) / total * 100) if total else 100)
     logger.info("Playlist complete", extra={"playlist": playlist_title, "count": len(results)})

@@ -5,6 +5,7 @@ from PySide6.QtCore import QThread, Signal
 from playlist import extract_video_info_from_array
 from downloader import download_and_convert, download_selected
 from spotify import download_spotify_csv
+from instagram import download_instagram
 
 
 class DownloadWorker(QThread):
@@ -40,6 +41,18 @@ class DownloadWorker(QThread):
                     if len(failed) > 3:
                         msg += f" and {len(failed) - 3} more"
                 self.finished.emit(True, msg, "Spotify")
+            elif "instagram" in self.mode:
+                done, skipped = download_instagram(
+                    self.url,
+                    self.fmt,
+                    self.quality,
+                    target_dir=self.output_dir,
+                    progress_callback=self.progress.emit,
+                )
+                msg = done[0] + " is saved" if len(done) == 1 else f"{len(done)} files saved"
+                if skipped:
+                    msg += f", {len(skipped)} item(s) had no video"
+                self.finished.emit(True, msg, done[0])
             elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
                 download_selected(

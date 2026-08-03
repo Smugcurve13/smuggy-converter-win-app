@@ -53,17 +53,23 @@ class ConverterWindow(QMainWindow):
             w.setVisible(spotify)
 
         if spotify:
-            self.quality_label.setText("Audio Quality:")
             self.accent.setText("from Spotify")
+        elif "instagram" in mode:
+            self.url_label.setText("Instagram Post or Reel URL:")
+            self.url_input.setPlaceholderText("https://www.instagram.com/reel/...")
+            self.accent.setText("from Instagram")
         elif "playlist" in mode:
             self.url_label.setText("YouTube Playlist URL:")
             self.url_input.setPlaceholderText("https://www.youtube.com/playlist?list=...")
+            self.accent.setText(f"to {self._current_format().upper()}")
         else:
             self.url_label.setText("YouTube Video URL:")
             self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
+            self.accent.setText(f"to {self._current_format().upper()}")
 
-        if not spotify:
-            self._update_quality_options()
+        # Unconditional: Spotify used to skip this, which left video resolutions
+        # sitting under the "Audio Quality:" label.
+        self._update_quality_options()
 
     def __init__(self) -> None:
         super().__init__()
@@ -115,6 +121,10 @@ class ConverterWindow(QMainWindow):
                                       border-radius: 8px; padding: 10px 18px; font-weight: 600; }
             QPushButton#modeSpotify:hover { background: #152112; border-color: #1db954; }
             QPushButton#modeSpotify:checked { background: #0d2b1a; border-color: #1ed760; color: #1ed760; }
+            QPushButton#modeInstagram { background: #17171b; color: #d9dbe2; border: 1px solid #2b2b31;
+                                        border-radius: 8px; padding: 10px 18px; font-weight: 600; }
+            QPushButton#modeInstagram:hover { background: #24151f; border-color: #c13584; }
+            QPushButton#modeInstagram:checked { background: #2b0d20; border-color: #e1306c; color: #e1306c; }
             QPushButton#convert { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                                                              stop:0 #c13232, stop:1 #c96851);
                                    border-radius: 10px; color: #fdfdff; font-size: 18px;
@@ -203,10 +213,10 @@ class ConverterWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         self.mode_group.buttonClicked.connect(self._update_url_mode)
         
-        for text in ["YT Video", "YT Playlist", "Spotify"]:
+        for text in ["YT Video", "YT Playlist", "Spotify", "Instagram"]:
             btn = QPushButton(text)
             btn.setCheckable(True)
-            btn.setObjectName("modeSpotify" if text == "Spotify" else "mode")
+            btn.setObjectName({"Spotify": "modeSpotify", "Instagram": "modeInstagram"}.get(text, "mode"))
             self.mode_group.addButton(btn)
             modes.addWidget(btn)
         self.mode_group.buttons()[0].setChecked(True)
@@ -272,7 +282,9 @@ class ConverterWindow(QMainWindow):
         self.format_combo = QComboBox()
         self.format_combo.addItems(["MP3 (Audio)", "MP4 (Video)"])
         self.format_combo.setMinimumHeight(42)
-        self.format_combo.currentTextChanged.connect(self._update_quality_options)
+        # _update_url_mode is the full refresh: labels, accent, visibility and
+        # quality items. Format changes need all of it, not just the items.
+        self.format_combo.currentTextChanged.connect(self._update_url_mode)
 
     # Quality
         self.quality_label = QLabel("Audio Quality:")
@@ -304,20 +316,38 @@ class ConverterWindow(QMainWindow):
         if path:
             self.csv_input.setText(path)
 
+    # (label, value). The value travels as Qt item data rather than being scraped
+    # back out of the label, so labels may contain any number of digits.
+    AUDIO_QUALITIES = [("320 kbps (Highest)", 320), ("256 kbps", 256), ("192 kbps", 192)]
+    VIDEO_QUALITIES = [
+        ("2160p (4K)", 2160),
+        ("1440p (2K)", 1440),
+        ("1080p", 1080),
+        ("720p", 720),
+        ("480p", 480),
+    ]
+
     def _update_quality_options(self) -> None:
-        """Swap the quality dropdown between audio bitrates and video resolutions."""
-        # Each entry must contain exactly one number - _on_convert_clicked parses it
-        # by joining the digits.
-        if self._current_format() == "mp3":
+        """Owns the quality label and items. Mode decides first, format second.
+
+        Spotify is always audio; it must never inherit the format combo's state,
+        which is how video resolutions ended up under "Audio Quality:".
+        """
+        if "spotify" in self._current_mode() or self._current_format() == "mp3":
             self.quality_label.setText("Audio Quality:")
-            items = ["320 kbps (Highest)", "256 kbps", "192 kbps"]
-            self.accent.setText("to MP3")
+            entries = self.AUDIO_QUALITIES
         else:
             self.quality_label.setText("Video Quality:")
-            items = ["1080p", "720p", "480p"]
-            self.accent.setText("to MP4")
+            entries = self.VIDEO_QUALITIES
+
+        previous = self.quality_combo.currentData()
         self.quality_combo.clear()
-        self.quality_combo.addItems(items)
+        for label, value in entries:
+            self.quality_combo.addItem(label, value)
+        # Keep the user's pick when switching modes, if it still exists.
+        keep = self.quality_combo.findData(previous)
+        if keep != -1:
+            self.quality_combo.setCurrentIndex(keep)
 
     def _current_format(self) -> str:
         return "mp3" if "mp3" in self.format_combo.currentText().lower() else "mp4"
@@ -404,9 +434,7 @@ class ConverterWindow(QMainWindow):
             return  # Prevent multiple simultaneous downloads
         
         mode = self._current_mode()
-        quality_text = self.quality_combo.currentText()
-        digits = "".join(ch for ch in quality_text if ch.isdigit())
-        quality = int(digits) if digits else None
+        quality = self.quality_combo.currentData()
 
         if "spotify" in mode:
             csv_path = self.csv_input.text().strip()
@@ -425,17 +453,33 @@ class ConverterWindow(QMainWindow):
             return
 
         url = self.url_input.text().strip()
+        instagram = "instagram" in mode
 
         if not url:
-            self._show_toast("Please enter a YouTube URL", False)
+            self._show_toast(
+                "Please enter an Instagram URL" if instagram else "Please enter a YouTube URL",
+                False,
+            )
+            return
+
+        fmt = self._current_format()
+
+        if instagram:
+            if "instagram.com" not in url:
+                self._show_toast("That doesn't look like an Instagram URL", False)
+                return
+            logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
+            self._start_loading(show_progress=True)
+            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+            self.worker.progress.connect(self._on_download_progress)
+            self.worker.finished.connect(self._on_download_finished)
+            self.worker.start()
             return
 
         # Check if playlist URL is entered in single video mode
         if "playlist?list=" in url and "playlist" not in mode:
             self._show_toast("Playlist detected: switch modes", False)
             return
-
-        fmt = self._current_format()
 
         logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
 
