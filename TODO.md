@@ -20,7 +20,9 @@ Features:
 - [x] Distribution - Package .exe and .app (zipped) and upload to GitHub
 - [ ] Package for Linux
 - [ ] Batch download (list of links, csv of links, etc.)
-- [ ] Download playlists from Apple Music / Spotify / etc.
+- [x] Download playlists from Spotify (via Exportify CSV)
+- [x] Instagram reels and posts (MP3 and MP4, public only)
+- [x] Up to 4K video (2160p / 1440p)
 - [ ] Website for outreach and link to .exe and .dmg
 - [ ] Auto-update
 - [ ] Popup to show new version available (poll GitHub releases)
