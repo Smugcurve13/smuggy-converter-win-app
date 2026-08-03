@@ -1,215 +1,196 @@
-# SmuggyConverter (Windows App)
+# SmuggyConverter
 
-A lightweight Windows GUI application for downloading online media and converting it to various audio/video formats. Built with Python and PyQt6, SmuggyConverter provides an intuitive interface for fetching media from popular platforms and converting them to your preferred format.
+A desktop app for downloading media and converting it to MP3 or MP4. Built with
+Python and PySide6, it wraps yt-dlp and FFmpeg behind a GUI so you don't have to
+touch a command line.
 
-## Features
+Runs on **Windows** and **macOS (Apple Silicon)**.
 
-- **Easy Media Downloads**: Download videos and audio from various online platforms
-- **Format Conversion**: Convert downloaded media to multiple audio and video formats
-- **Playlist Support**: Download entire playlists with a single click
-- **Quality Selection**: Choose your preferred quality for downloads
-- **Built-in FFmpeg**: FFmpeg binaries can be bundled with the release for seamless conversion
-- **Cross-platform Logging**: Automatic logging system that works across Windows, macOS, and Linux
+## What it does
 
-## Download (recommended)
+| Source | Formats | Notes |
+|---|---|---|
+| **YouTube video** | MP3, MP4 | Single URL |
+| **YouTube playlist** | MP3, MP4 | Pick which videos to download from a searchable list |
+| **Spotify playlist** | MP3 | Via an [exportify.net](https://exportify.net) CSV — each track is matched on YouTube and tagged with Spotify's own metadata |
+| **Instagram** | MP3, MP4 | Public reels and posts. Carousels save every video |
 
-If you just want to use the app:
+- **MP3 files are properly tagged** — title, artist, album, year and embedded cover art.
+- **MP4 up to 4K** — 2160p, 1440p, 1080p, 720p, 480p. Files are remuxed rather than
+  re-encoded, so a download finishes in seconds instead of minutes.
+- **FFmpeg is bundled** on Windows and macOS releases; nothing to install.
+- **Progress bar and real error messages**, with a one-click **Export Logs** button
+  that zips everything needed to diagnose a problem.
 
-1. Go to the **Releases** page.
-2. Download the latest **.rar** asset.
-3. Extract it anywhere.
-4. Run the included executable.
+### A note on 4K
 
-> Note: The release archive already contains a built app. You don’t need Python installed to use the release build.
+YouTube does not offer H.264 above 1080p, so 1440p and 2160p come out as **AV1**.
+At 1080p and below you get H.264 + AAC, which plays anywhere. AV1 needs a recent
+player — Windows 11, or Windows 10 with the free *AV1 Video Extension* from the
+Microsoft Store. Expect 130–250 MB for a 3–4 minute 4K video.
+
+## Download
+
+1. Go to the [Releases](https://github.com/Smugcurve13/smuggy-converter-win-app/releases) page.
+2. Grab the asset for your platform:
+   - `SmuggyConverter-windows-<version>.zip`
+   - `SmuggyConverter-macos-arm64-<version>.zip`
+3. Extract it anywhere and run the app. No Python, no FFmpeg install.
+
+**Windows** may warn "Windows protected your PC" — the executable is unsigned.
+Click **More info → Run anyway**.
+
+**macOS** builds are ad-hoc signed, not notarised. If Gatekeeper blocks it,
+right-click the app → **Open**, or run
+`xattr -dr com.apple.quarantine /path/to/SmuggyConverter.app`.
+
+## Using it
+
+1. Pick a mode: **YT Video**, **YT Playlist**, **Spotify** or **Instagram**.
+2. Set the output folder (asked once on first run, changeable any time).
+3. Paste a URL — or for Spotify, browse to your Exportify CSV.
+4. Choose format and quality, then **Convert and Download**.
+
+### Spotify mode
+
+Spotify has no public audio API, so the track list comes from a CSV:
+
+1. Go to [exportify.net](https://exportify.net) and sign in with Spotify.
+2. Export the playlist you want as CSV.
+3. Select that CSV in the app.
+
+Each track is searched on YouTube, downloaded as MP3, then tagged with the
+metadata from your CSV — so you get the real title, artist, album and album art
+rather than whatever the YouTube upload was called. Album art missing from the
+CSV is fetched from Spotify's public oEmbed endpoint.
 
 ## Build it yourself
 
-If you prefer to build your own executable, you can.
-
 ### Prerequisites
 
-- **Operating System**: Windows 10/11 (primary target), also compatible with macOS/Linux
-- **Python**: Python 3.8 or higher
-- **Virtual Environment**: (Optional but strongly recommended to avoid dependency conflicts)
-- **FFmpeg**: Required for media conversions. Can be:
-  - Bundled with the executable (recommended for releases)
-  - Installed system-wide and available in PATH
-  - Placed in `assets/ffmpeg/windows/` directory
+- Python 3.12 (3.9+ should work; CI uses 3.12)
+- FFmpeg — bundled in `assets/ffmpeg/windows/` for Windows. On macOS/Linux the app
+  falls back to whatever `ffmpeg` is on your `PATH` (`brew install ffmpeg`,
+  `apt install ffmpeg`). It refuses to start with a clear message if it finds none.
 
 ### Setup
 
-1. **Clone or download** this repository to your local machine.
-
-2. **Create a virtual environment** (recommended):
 ```bash
-python -m venv .venv
+python -m venv venv
 ```
 
-3. **Activate the virtual environment**:
-```bash
-.venv\\Scripts\\activate
-```
+Activate it — `venv\Scripts\activate` on Windows, `source venv/bin/activate` on
+macOS/Linux — then:
 
-4. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-5. **Verify FFmpeg** (if not bundling): Ensure FFmpeg is installed and accessible.
-```bash
-ffmpeg -version
-```
-
-### Run from source
-
-Once setup is complete, launch the application:
+Run from source:
 
 ```bash
 python main.py
 ```
 
-The GUI window should open, allowing you to paste URLs, select formats, and start downloads.
-
-### Build an .exe (PyInstaller)
-
-To create a standalone executable that can run without Python installed:
-
-**Basic Windows build** (without bundled FFmpeg):
+### Checks
 
 ```bash
-pyinstaller --onefile --windowed --icon=assets/icon.ico --add-data "assets/icon.ico;." --clean --name="SmuggyConverter" main.py
+python config.py
 ```
 
-**Full build with bundled FFmpeg** (recommended for distribution):
+Prints the resolved FFmpeg paths and asserts the platform logic.
 
 ```bash
-pyinstaller main.py --onefile --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
+python tests/test_format_selection.py
 ```
 
-The built executable will be located in the `dist/` directory.
+Verifies MP4 quality selection offline, against YouTube's real format ladder — no
+network needed. It guards a subtle failure where asking for 4K silently returned
+1080p.
 
-**Note**: Building with `--onefile` creates a single executable but may take longer to start. For faster startup, omit `--onefile` to create a folder distribution.
+### Packaging
 
-## Development notes
+CI does this on tag push; see [.github/workflows/release.yaml](.github/workflows/release.yaml).
+To build locally:
 
-- Useful PyInstaller/Dev commands are also kept in `cmd.txt`.
-- Logs are automatically saved to `~/.SmuggyConverter/logs/logs.txt` for debugging purposes.
-- The application uses platform-specific home directory detection (Windows: `%USERPROFILE%`, macOS/Linux: `$HOME`).
+**Windows**
 
-## Troubleshooting & Common Issues
+```bash
+pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
+```
 
-### Installation Issues
+**macOS** — same idea, but `:` instead of `;` as the `--add-data` separator, and
+point `--add-binary` at arm64 FFmpeg binaries.
 
-**Problem**: `pip install -r requirements.txt` fails with dependency errors
+Output lands in `dist/`. `--onedir` is deliberate: `--onefile` unpacks ~200 MB of
+FFmpeg to a temp directory on every launch, which is slow.
 
-**Solutions**:
-- Ensure you're using Python 3.8 or higher: `python --version`
-- Upgrade pip: `python -m pip install --upgrade pip`
-- Try installing dependencies one at a time to identify the problematic package
-- If PyQt6 fails, you may need to install Visual C++ Redistributables on Windows
+## Releasing
 
-**Problem**: Virtual environment won't activate
+Push a tag matching `v*.*.*`:
 
-**Solutions**:
-- On Windows, you may need to enable script execution: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-- Verify the path: `.venv\Scripts\activate.bat` (CMD) or `.venv\Scripts\Activate.ps1` (PowerShell)
+```bash
+git tag -a v1.3.0 -m "…" && git push origin v1.3.0
+```
 
-### Runtime Issues
+That builds both platforms and publishes a GitHub Release with both zips
+attached. Use the **Run workflow** button on the Actions tab to build a branch
+without publishing anything.
 
-**Problem**: "FFmpeg not found" error when converting
+> Tags not matching `v*.*.*` do not trigger a release — which is how test builds
+> are published without taking the "Latest" badge.
 
-**Solutions**:
-- Install FFmpeg system-wide and ensure it's in your PATH
-- Place `ffmpeg.exe` and `ffprobe.exe` in `assets/ffmpeg/windows/` directory
-- Download FFmpeg from: https://ffmpeg.org/download.html
-- Verify installation: `ffmpeg -version` in terminal
+## Logs
 
-**Problem**: Application starts but downloads fail
+Written to `~/.SmuggyConverter/logs/smuggyconverter.log`, rotated daily, 30 days
+kept. On Windows that's `C:\Users\<you>\.SmuggyConverter\logs\`.
 
-**Solutions**:
-- Check your internet connection
-- Verify the URL is valid and from a supported platform
-- Check the logs at `~/.SmuggyConverter/logs/logs.txt` for error details
-- Some platforms may require authentication or have region restrictions
-- Try updating yt-dlp: `pip install --upgrade yt-dlp`
+The **Open Logs Folder** button takes you there; **Export Logs** (offered on any
+failure) zips them for sharing. Each run records the app version, yt-dlp version,
+Python version and resolved FFmpeg path, which is usually enough to identify a
+problem without any back and forth.
 
-**Problem**: GUI doesn't appear or crashes on startup
+## Troubleshooting
 
-**Solutions**:
-- Ensure PyQt6 is properly installed: `pip install --force-reinstall PyQt6`
-- Check for any Python errors in the terminal
-- Verify all asset files (icons, images) are present in the `assets/` directory
-- Try running in non-windowed mode to see error messages
+**"FFmpeg not found" on startup** — bundled builds shouldn't hit this; if you're
+running from source, install FFmpeg (`brew install ffmpeg` /
+`apt install ffmpeg`) or put `ffmpeg.exe` and `ffprobe.exe` in
+`assets/ffmpeg/windows/`.
 
-**Problem**: Downloaded files have no audio or video
+**A download fails with HTTP 403** — YouTube rate-limiting. Wait a minute and
+retry. Playlist and Spotify batches already pace themselves to avoid it.
 
-**Solutions**:
-- Ensure FFmpeg is properly configured
-- Try a different format selection
-- Check if the source URL has the desired quality available
-- Review logs for FFmpeg conversion errors
+**"Sign in to confirm you're not a bot"** — the same thing, more aggressive.
+It clears on its own.
 
-**Problem**: Executable won't run ("Windows protected your PC" error)
+**An Instagram post won't download** — only public posts are supported. Private
+or login-walled posts report that explicitly.
 
-**Solutions**:
-- This is normal for unsigned executables. Click "More info" then "Run anyway"
-- To avoid this, you can sign the executable (requires a code signing certificate)
-- Users can add an exception in Windows Security
+**Spotify tracks download but tags are empty** — Exportify has changed its column
+names across versions. The parser accepts several spellings, but if yours produces
+blank tags please open an issue with the CSV's header row.
 
-### Building Issues
+**4K file won't play** — that's AV1; see the note above. If a 4K request produces
+a 1080p file, that *is* a bug worth reporting.
 
-**Problem**: PyInstaller build fails
+**Downloads fail generally** — click **Export Logs** and check
+`smuggyconverter.log`; the error is recorded with its full context. Updating
+yt-dlp (`pip install --upgrade yt-dlp`) fixes most extraction breakage, since
+sites change constantly.
 
-**Solutions**:
-- Clear previous builds: `rmdir /s dist build` and delete `.spec` files
-- Install/upgrade PyInstaller: `pip install --upgrade pyinstaller`
-- Try building without `--onefile` first to diagnose issues
-- Check that all paths in `--add-data` and `--add-binary` exist
+## Project layout
 
-**Problem**: Built executable is too large
-
-**Solutions**:
-- Use virtual environment to minimize dependencies
-- Consider using `--exclude-module` for unused packages
-- Don't bundle FFmpeg if users can install it separately
-- Use UPX compression (add `--upx-dir` option)
-
-**Problem**: Executable runs but assets are missing
-
-**Solutions**:
-- Verify `--add-data` paths in the PyInstaller command
-- Check the separator: use `;` on Windows, `:` on macOS/Linux
-- Ensure assets exist before building
-- Test the executable from a different directory than the build location
-
-### Logging & Debugging
-
-- **Log Location**: `~/.SmuggyConverter/logs/logs.txt`
-  - Windows: `C:\Users\YourUsername\.SmuggyConverter\logs\logs.txt`
-  - macOS/Linux: `~/.SmuggyConverter/logs/logs.txt`
-- **Log Levels**: DEBUG, INFO, WARNING, ERROR, CRITICAL
-- **Check Logs For**: Download errors, conversion failures, FFmpeg issues, network problems
-
-### Platform-Specific Notes
-
-**Windows**:
-- Use PowerShell or CMD for commands
-- Paths use backslashes (`\`) but Python handles forward slashes (`/`) too
-- May need administrator privileges for certain operations
-
-**macOS/Linux** (experimental):
-- Replace `python` with `python3` if needed
-- Activation script: `source .venv/bin/activate`
-- FFmpeg: Install via homebrew (macOS) or apt/yum (Linux)
-- PyInstaller separator in add-data: use `:` instead of `;`
-
-### Still Having Issues?
-
-1. **Check the logs** at `~/.SmuggyConverter/logs/logs.txt` for detailed error messages
-2. **Update dependencies**: `pip install --upgrade -r requirements.txt`
-3. **Try a clean reinstall**: Delete `.venv`, recreate it, and reinstall packages
-4. **Check TODO.md** for known issues and planned fixes
-5. **Verify system requirements** are met (Python version, OS compatibility)
+| Path | Purpose |
+|---|---|
+| `main.py` | Entry point, startup FFmpeg check |
+| `downloader.py` | The only module that downloads anything |
+| `playlist.py` | YouTube playlist extraction |
+| `spotify.py` | Exportify CSV parsing, metadata and cover art |
+| `instagram.py` | Instagram posts, reels and carousels |
+| `config.py` | Paths and platform-aware FFmpeg resolution |
+| `logs.py` | Logging setup and log export |
+| `gui/` | PySide6 window and dialogs |
+| `core/` | Background download worker |
 
 ## Author
 
