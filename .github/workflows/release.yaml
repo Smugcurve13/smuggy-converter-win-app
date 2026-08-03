@@ -4,45 +4,165 @@ on:
   push:
     tags:
       - "v*.*.*"
+  # Lets a branch be built and the artifacts inspected WITHOUT publishing a
+  # release; the publish job below is gated on the ref actually being a tag.
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  # On a manual run there is no tag, and a branch name may contain "/", which
+  # would break the artifact filenames.
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+
+  # Pinned static FFmpeg for Apple Silicon. Verified by checksum below — if you
+  # bump the tag you MUST recompute both digests or the build will fail closed.
+  MAC_FFMPEG_BASE: https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1
+  MAC_FFMPEG_SHA: 8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa
+  MAC_FFPROBE_SHA: d986a8ec7b030899fe66a8a288ed809a3543338705a3ce178cfb85869c5d80be
+
 jobs:
-  build-and-release:
-    name: Build & Release (Windows)
+  # ══ Windows ═════════════════════════════════════════════════════════════
+  build-windows:
+    name: Build (Windows)
     runs-on: windows-latest
 
     steps:
-      # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Python setup ────────────────────────────────────────────────────
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
-      # ── 3. Dependencies ────────────────────────────────────────────────────
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ── 4. PyInstaller build ───────────────────────────────────────────────
       - name: Build with PyInstaller
         run: |
           pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
 
-
-      # ── 5. Zip artifact ────────────────────────────────────────────────────
       - name: Zip artifact
         run: |
           Compress-Archive `
             -Path "dist\SmuggyConverter" `
-            -DestinationPath "SmuggyConverter-windows-${{ github.ref_name }}.zip"
+            -DestinationPath "SmuggyConverter-windows-${{ env.VERSION }}.zip"
 
-      # ── 6. Upload release ──────────────────────────────────────────────────
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-windows
+          path: SmuggyConverter-windows-${{ env.VERSION }}.zip
+          retention-days: 1
+
+  # ══ macOS (Apple Silicon) ═══════════════════════════════════════════════
+  build-macos:
+    name: Build (macOS Apple Silicon)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # No .icns is committed; assets/logo.png is 2048x2048 so it scales cleanly.
+      - name: Generate app icon
+        run: |
+          mkdir -p icon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size assets/logo.png --out "icon.iconset/icon_${size}x${size}.png"
+            sips -z $((size * 2)) $((size * 2)) assets/logo.png --out "icon.iconset/icon_${size}x${size}@2x.png"
+          done
+          iconutil -c icns icon.iconset -o assets/icon.icns
+          ls -la assets/icon.icns
+
+      # Fails closed on digest mismatch — these binaries ship to users.
+      - name: Fetch and verify FFmpeg (arm64)
+        run: |
+          mkdir -p assets/ffmpeg/macos
+          cd assets/ffmpeg/macos
+          curl -sSLf -o ffmpeg.gz  "$MAC_FFMPEG_BASE/ffmpeg-darwin-arm64.gz"
+          curl -sSLf -o ffprobe.gz "$MAC_FFMPEG_BASE/ffprobe-darwin-arm64.gz"
+          echo "$MAC_FFMPEG_SHA  ffmpeg.gz"   | shasum -a 256 -c -
+          echo "$MAC_FFPROBE_SHA  ffprobe.gz" | shasum -a 256 -c -
+          gunzip ffmpeg.gz ffprobe.gz
+          chmod +x ffmpeg ffprobe
+          file ffmpeg | grep -q arm64 || { echo "::error::ffmpeg is not arm64"; exit 1; }
+          ./ffmpeg -hide_banner -version | head -1
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" \
+            --icon=assets/icon.icns \
+            --add-binary "assets/ffmpeg/macos/ffmpeg:assets/ffmpeg/macos" \
+            --add-binary "assets/ffmpeg/macos/ffprobe:assets/ffmpeg/macos" \
+            --add-data "assets/logo.png:assets" \
+            --add-data "assets/ref.png:assets"
+
+      # Catches a silently-unbundled ffmpeg here rather than after release.
+      - name: Verify FFmpeg landed in the bundle
+        run: |
+          found=$(find dist/SmuggyConverter.app -type f \( -name ffmpeg -o -name ffprobe \))
+          echo "$found"
+          # PyInstaller may place copies under both Contents/MacOS and
+          # Contents/Frameworks, so require at least both binaries, not exactly two.
+          [ "$(echo "$found" | grep -c .)" -ge 2 ] || {
+            echo "::error::ffmpeg/ffprobe missing from the .app bundle"; exit 1; }
+          du -sh dist/SmuggyConverter.app
+
+      # arm64 refuses to launch unsigned code, and adding binaries invalidates
+      # the signature PyInstaller applied. Ad-hoc only; we do not notarize.
+      - name: Ad-hoc code sign
+        run: |
+          codesign --force --deep --sign - dist/SmuggyConverter.app
+          codesign --verify --deep --strict dist/SmuggyConverter.app
+          echo "signed and verified"
+
+      # ditto, not zip: plain zip drops symlinks and exec bits inside a .app.
+      - name: Zip artifact
+        run: |
+          ditto -c -k --keepParent dist/SmuggyConverter.app \
+            "SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip"
+          ls -lh "SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos
+          path: SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip
+          retention-days: 1
+
+  # ══ Publish once, with both artifacts ═══════════════════════════════════
+  # Separate job on purpose: if each build published, they would race and
+  # produce duplicate or half-populated releases.
+  release:
+    name: Publish release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    # Manual runs build and upload artifacts but must never publish.
+    if: github.ref_type == 'tag'
+
+    steps:
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist
+
       - name: Upload release
         uses: softprops/action-gh-release@v2
         with:
@@ -54,20 +174,42 @@ jobs:
           body: |
             ## SmuggyConverter ${{ github.ref_name }}
 
-            A Windows desktop app for downloading and converting media via yt-dlp with a PySide6 GUI.
+            Download YouTube videos and Spotify playlists as tagged MP3s or MP4 video, via yt-dlp with a PySide6 GUI.
 
             ---
 
-            ### Installation
+            ### Windows
 
-            1. Download **SmuggyConverter-windows-${{ github.ref_name }}.zip** below.
+            1. Download **SmuggyConverter-windows-${{ env.VERSION }}.zip** below.
             2. Extract the zip to any folder.
             3. Run **SmuggyConverter.exe** — no installation required.
 
-            > **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled — no separate install needed.
+            > Windows 10 or later (64-bit). FFmpeg is bundled.
+
+            ### macOS (Apple Silicon)
+
+            1. Download **SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip** below.
+            2. Unzip and drag **SmuggyConverter.app** into Applications.
+            3. First launch only, clear the download quarantine flag:
+
+            ```
+            xattr -cr /Applications/SmuggyConverter.app
+            ```
+
+            Then right-click the app and choose **Open**.
+
+            > Apple Silicon (M1 or newer) — Intel Macs are not supported by this build.
+            > FFmpeg is bundled.
+            >
+            > **Why the extra step?** The app is ad-hoc signed but not notarized,
+            > which needs a paid Apple Developer account. macOS therefore flags it
+            > as coming from an unidentified developer. The command above removes
+            > the quarantine attribute macOS adds to downloaded files.
 
             ---
 
             ### What's Changed
 
-          files: SmuggyConverter-windows-${{ github.ref_name }}.zip
+          files: |
+            dist/SmuggyConverter-windows-${{ env.VERSION }}.zip
+            dist/SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip

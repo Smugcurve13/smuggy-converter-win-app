@@ -17,7 +17,7 @@ Features:
 - [x] Reduce package size
 - [x] MP4 download toggle
 - [ ] Limit MP4 downloads to prevent YouTube flagging IP (~ 50 in a playlist)
-- [ ] Distribution - Package .exe and .dmg and upload to GitHub
+- [x] Distribution - Package .exe and .app (zipped) and upload to GitHub
 - [ ] Package for Linux
 - [ ] Batch download (list of links, csv of links, etc.)
 - [ ] Download playlists from Apple Music / Spotify / etc.

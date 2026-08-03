@@ -22,11 +22,18 @@ def get_base_path():
 BASE_PATH = get_base_path()
 
 
+# Only platforms we ship a bundled binary for. Linux always uses PATH.
+_BUNDLE_DIRS = {"win32": "windows", "darwin": "macos"}
+
+
 def _ffmpeg_binary(name):
-    """Bundled Windows binary when running on Windows, else whatever is on PATH."""
-    bundled = os.path.join(BASE_PATH, "assets", "ffmpeg", "windows", f"{name}.exe")
-    if sys.platform == "win32" and os.path.exists(bundled):
-        return bundled
+    """Bundled binary for this platform if we ship one, else whatever is on PATH."""
+    platform_dir = _BUNDLE_DIRS.get(sys.platform)
+    if platform_dir:
+        suffix = ".exe" if sys.platform == "win32" else ""
+        bundled = os.path.join(BASE_PATH, "assets", "ffmpeg", platform_dir, f"{name}{suffix}")
+        if os.path.exists(bundled):
+            return bundled
     # ponytail: bare name lets yt-dlp/ffmpeg surface its own "not found" error
     return shutil.which(name) or name
 
@@ -52,5 +59,28 @@ if __name__ == "__main__":
         assert not FFMPEG_PATH.endswith(".exe"), "must not pick the Windows exe off Windows"
     # A bare name means nothing was found, and must not read as available.
     assert FFMPEG_AVAILABLE == os.path.isabs(FFMPEG_PATH) == os.path.isabs(FFPROBE_PATH)
+
+    # A bundled binary must win over PATH. Simulated per platform so this runs
+    # anywhere, since CI is the only place a real bundle exists.
+    import unittest.mock as _m
+
+    for _plat, _dir, _sfx in (("win32", "windows", ".exe"), ("darwin", "macos", "")):
+        _want = os.path.join(BASE_PATH, "assets", "ffmpeg", _dir, f"ffmpeg{_sfx}")
+        with _m.patch.object(sys, "platform", _plat), \
+             _m.patch("os.path.exists", lambda p, _w=_want: p == _w):
+            assert _ffmpeg_binary("ffmpeg") == _want, f"{_plat}: got {_ffmpeg_binary('ffmpeg')}"
+        # With no bundle present it must fall through rather than invent a path.
+        # shutil.which is stubbed because it consults _winapi under a faked win32.
+        with _m.patch.object(sys, "platform", _plat), \
+             _m.patch("os.path.exists", lambda p: False), \
+             _m.patch("shutil.which", lambda n: "/usr/bin/" + n):
+            assert _ffmpeg_binary("ffmpeg") == "/usr/bin/ffmpeg"
+
+    # Linux ships no bundle, so it must never claim one even if the path exists.
+    with _m.patch.object(sys, "platform", "linux"), \
+         _m.patch("os.path.exists", lambda p: True), \
+         _m.patch("shutil.which", lambda n: "/usr/bin/" + n):
+        assert _ffmpeg_binary("ffmpeg") == "/usr/bin/ffmpeg"
+
     print(f"ffmpeg : {FFMPEG_PATH}\nffprobe: {FFPROBE_PATH}\ndir    : {FFMPEG_DIR}")
     print(f"available: {FFMPEG_AVAILABLE}")
