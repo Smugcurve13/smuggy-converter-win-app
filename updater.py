@@ -362,7 +362,12 @@ def apply(zip_path: Path) -> None:
 
 
 if __name__ == "__main__":
+    import logging
     import unittest.mock as _m
+
+    # The checks below deliberately feed junk to _is_newer, which warns. Without
+    # this the self-check writes noise into the user's real log directory.
+    logging.disable(logging.CRITICAL)
 
     # Tags carry a v and version.py does not; that mismatch is the whole risk here.
     assert _is_newer("v1.4.0", "1.3.0")
