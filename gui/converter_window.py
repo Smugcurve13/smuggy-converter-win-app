@@ -33,7 +33,7 @@ from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
+from logs import logger, folder as logs_folder, create_logs_zip, default_zip_path
 from version import __version__
 import updater
 
@@ -696,7 +696,7 @@ class ConverterWindow(QMainWindow):
         dest, _ = QFileDialog.getSaveFileName(
             self,
             "Save Logs Zip",
-            default_zip_name(),
+            default_zip_path(),
             "Zip Files (*.zip)",
         )
         if not dest:
