@@ -42,9 +42,16 @@ _ASSET_HEADERS = {"User-Agent": _UA, "Accept": "application/octet-stream"}
 _ASSET_TAGS = {"win32": "windows", "darwin": "macos"}
 
 _CHUNK = 1 << 20
+# A 140 MB transfer on a slow line stalls past a short timeout and used to throw
+# the whole download away. Generous, and resumed rather than restarted.
+_TIMEOUT = 60
+_MAX_ATTEMPTS = 4
 # Short on purpose: PySide6 paths are deep and PyInstaller's manifest is not
 # longPathAware, so a verbose staging name can push extraction past MAX_PATH.
 _STAGING_NAME = ".upd"
+# Breadcrumb the helper drops when the swap fails, so the relaunched app can say
+# why nothing changed instead of silently re-offering the same update forever.
+_FAILED_NAME = ".upd-failed"
 # Zip, plus the extracted copy, plus the old copy still on disk during the swap.
 _FREE_SPACE_FLOOR = 1_000_000_000
 
@@ -184,13 +191,67 @@ def _sweep() -> None:
 
 
 def download(url: str, dest: Path, progress_callback=None, is_cancelled=None) -> bool:
-    """Stream the release zip to dest. False means the caller cancelled."""
-    req = urllib.request.Request(url, headers=_ASSET_HEADERS)
+    """Stream the release zip to dest. False means the caller cancelled.
+
+    progress_callback receives (bytes_read, total_bytes) so the UI can show
+    real sizes rather than only a percentage.
+
+    A dropped or stalled connection resumes from what is already on disk
+    instead of restarting a 140 MB transfer.
+    """
+    resume = 0
+    last_error = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            if not _fetch(url, dest, resume, progress_callback, is_cancelled):
+                return False
+        except Exception as exc:
+            last_error = exc
+            resume = dest.stat().st_size if dest.exists() else 0
+            logger.warning(
+                "Update download interrupted",
+                extra={"attempt": attempt, "resume_at": resume, "error": str(exc)},
+            )
+            continue
+
+        # Verify before anything destructive happens. Reading the central
+        # directory is instant and catches a truncated transfer; testzip()
+        # would decompress all 140 MB to learn the same thing.
+        try:
+            with zipfile.ZipFile(dest) as zf:
+                if not _top_level(zf.namelist()):
+                    raise OSError("downloaded archive has an unexpected layout")
+        except zipfile.BadZipFile as exc:
+            # A resume that landed on a corrupt file must not retry forever.
+            dest.unlink(missing_ok=True)
+            resume = 0
+            last_error = exc
+            logger.warning("Downloaded archive was corrupt, restarting",
+                           extra={"attempt": attempt})
+            continue
+
+        logger.info("Update downloaded",
+                    extra={"bytes": dest.stat().st_size, "dest": str(dest)})
+        return True
+
+    raise OSError(f"download failed after {_MAX_ATTEMPTS} attempts: {last_error}")
+
+
+def _fetch(url: str, dest: Path, resume: int, progress_callback, is_cancelled) -> bool:
+    """One transfer attempt, appending when resuming. False means cancelled."""
+    headers = dict(_ASSET_HEADERS)
+    if resume:
+        headers["Range"] = f"bytes={resume}-"
+    req = urllib.request.Request(url, headers=headers)
     # browser_download_url 302s to the release CDN; the default opener follows it.
-    with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
-        total = int(resp.headers.get("Content-Length") or 0)
-        read = 0
-        with open(dest, "wb") as out:
+    with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp:
+        # A server that ignores Range answers 200 with the whole file, so the
+        # bytes already on disk must be discarded rather than appended to.
+        if resume and resp.status != 206:
+            resume = 0
+        total = int(resp.headers.get("Content-Length") or 0) + resume
+        read = resume
+        with open(dest, "ab" if resume else "wb") as out:
             while chunk := resp.read(_CHUNK):
                 if is_cancelled is not None and is_cancelled():
                     out.close()
@@ -199,19 +260,21 @@ def download(url: str, dest: Path, progress_callback=None, is_cancelled=None) ->
                     return False
                 out.write(chunk)
                 read += len(chunk)
-                if progress_callback and total:
-                    progress_callback(int(read / total * 100))
+                if progress_callback:
+                    progress_callback(read, total)
+    return True
 
-    # Verify before anything destructive happens. Reading the central directory
-    # is instant and catches a truncated transfer; testzip() would decompress
-    # all 140 MB to learn the same thing.
-    if total and read != total:
-        raise OSError(f"download truncated: got {read} of {total} bytes")
-    with zipfile.ZipFile(dest) as zf:
-        if not _top_level(zf.namelist()):
-            raise OSError("downloaded archive has an unexpected layout")
 
-    logger.info("Update downloaded", extra={"bytes": read, "dest": str(dest)})
+def consume_failure() -> bool:
+    """True if the last swap failed. Clears the marker so it reports once."""
+    app = app_root()
+    if app is None:
+        return False
+    marker = app.parent / _FAILED_NAME
+    if not marker.exists():
+        return False
+    marker.unlink(missing_ok=True)
+    logger.warning("Previous update failed to install")
     return True
 
 
@@ -253,6 +316,12 @@ set "APP=%~2"
 set "NEW=%~3"
 set "EXE=%~4"
 set "STAGING=%~5"
+set "FAILED=%~6"
+
+rem Windows locks every process's current directory, and cmd inherits ours from
+rem the app -- whose CWD is the app folder when launched from Explorer. Standing
+rem inside the directory we are about to rename makes the move fail outright.
+cd /d "%TEMP%"
 
 set /a n=0
 :wait
@@ -269,7 +338,17 @@ rem Let Defender finish scanning the freshly written files before we rename.
 ping -n 3 127.0.0.1 >nul
 rem "move src dst" moves INTO dst when dst already exists as a directory.
 rd /s /q "%APP%.old" 2>nul
-move "%APP%" "%APP%.old" >nul 2>&1 || goto fail
+
+set /a try=0
+:swap
+move "%APP%" "%APP%.old" >nul 2>&1 && goto moved
+set /a try+=1
+if %try% GEQ 5 goto fail
+rem Defender and indexers hold transient handles on freshly written files.
+ping -n 3 127.0.0.1 >nul
+goto swap
+
+:moved
 move "%NEW%" "%APP%" >nul 2>&1 || goto rollback
 start "" "%EXE%"
 rd /s /q "%APP%.old" >nul 2>&1
@@ -279,6 +358,8 @@ goto done
 :rollback
 move "%APP%.old" "%APP%" >nul 2>&1
 :fail
+rem Breadcrumb so the relaunched app can explain why nothing changed.
+echo swap failed> "%FAILED%" 2>nul
 start "" "%EXE%"
 :done
 rem Drops the batch context so cmd releases the file and the delete succeeds.
@@ -286,7 +367,7 @@ rem Drops the batch context so cmd releases the file and the delete succeeds.
 """
 
 _MACOS_HELPER = r"""#!/bin/sh
-PID="$1"; APP="$2"; NEW="$3"; STAGING="$4"
+PID="$1"; APP="$2"; NEW="$3"; STAGING="$4"; FAILED="$5"
 n=0
 while kill -0 "$PID" 2>/dev/null; do
   n=$((n+1)); [ "$n" -gt 240 ] && break
@@ -294,7 +375,7 @@ while kill -0 "$PID" 2>/dev/null; do
 done
 OLD="$APP.old"
 rm -rf "$OLD"
-mv "$APP" "$OLD" 2>/dev/null || { open -n "$APP"; rm -f "$0"; exit 1; }
+mv "$APP" "$OLD" 2>/dev/null || { : > "$FAILED"; open -n "$APP"; rm -f "$0"; exit 1; }
 if mv "$NEW" "$APP"; then
   # Belt and braces on top of ditto --noqtn; never gate on its exit code,
   # /usr/bin/xattr was a python shim on older macOS.
@@ -303,6 +384,7 @@ if mv "$NEW" "$APP"; then
   rm -rf "$OLD" "$STAGING"
 else
   mv "$OLD" "$APP"
+  : > "$FAILED"
   open -n "$APP"
 fi
 rm -f "$0"
@@ -327,12 +409,15 @@ def apply(zip_path: Path) -> None:
     new = _extract(zip_path, staging)
 
     pid = os.getpid()
+    failed = app.parent / _FAILED_NAME
+    failed.unlink(missing_ok=True)
     if sys.platform == "win32":
         body, suffix = _WINDOWS_HELPER, ".cmd"
-        args = [str(pid), str(app), str(new), str(app / Path(sys.executable).name), str(staging)]
+        args = [str(pid), str(app), str(new),
+                str(app / Path(sys.executable).name), str(staging), str(failed)]
     else:
         body, suffix = _MACOS_HELPER, ".sh"
-        args = [str(pid), str(app), str(new), str(staging)]
+        args = [str(pid), str(app), str(new), str(staging), str(failed)]
 
     # Written to temp, never inside the app: no release.yaml change, and no
     # extra unsigned file inside the macOS bundle.
@@ -341,6 +426,10 @@ def apply(zip_path: Path) -> None:
         fh.write(body)
 
     logger.info("Launching update helper", extra={"script": script, "pid": pid})
+    # cwd matters: Popen inherits ours, which for an Explorer-launched app is the
+    # app folder itself. Windows locks a process's current directory, so the
+    # helper would be holding the very directory it has to rename.
+    outside = tempfile.gettempdir()
     if sys.platform == "win32":
         # CREATE_NO_WINDOW, not DETACHED_PROCESS: the latter leaves the helper
         # with no console at all, and is documented to override the former.
@@ -348,6 +437,7 @@ def apply(zip_path: Path) -> None:
         subprocess.Popen(
             ["cmd", "/c", script, *args],
             creationflags=subprocess.CREATE_NO_WINDOW,
+            cwd=outside,
             close_fds=True,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -356,6 +446,7 @@ def apply(zip_path: Path) -> None:
         subprocess.Popen(
             ["/bin/sh", script, *args],
             start_new_session=True,
+            cwd=outside,
             close_fds=True,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -422,6 +513,16 @@ if __name__ == "__main__":
     assert "timeout /t" not in _WINDOWS_HELPER
     # move would nest the app inside a surviving .old directory.
     assert _WINDOWS_HELPER.index('rd /s /q "%APP%.old" 2>nul') < _WINDOWS_HELPER.index('move "%APP%"')
+    # The helper must step out of the app folder before renaming it: Windows
+    # locks a process's cwd, and cmd inherits the app's. This is what made the
+    # first Windows swap fail while macOS, which allows it, worked.
+    assert _WINDOWS_HELPER.index('cd /d "%TEMP%"') < _WINDOWS_HELPER.index(':wait')
+    # A failed swap must leave a breadcrumb, or the app silently re-offers the
+    # same update on every launch with nothing ever changing.
+    assert '"%FAILED%"' in _WINDOWS_HELPER and '"$FAILED"' in _MACOS_HELPER
+    # Both helpers relaunch on every exit path, including rollback.
+    assert _WINDOWS_HELPER.count('start "" "%EXE%"') >= 2
+    assert _MACOS_HELPER.count('open -n "$APP"') >= 3
 
     print(f"current version : {__version__}")
     print(f"platform asset  : {_ASSET_TAGS.get(sys.platform, '(unsupported)')}")

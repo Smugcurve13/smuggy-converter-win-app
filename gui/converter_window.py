@@ -104,6 +104,16 @@ class ConverterWindow(QMainWindow):
 
     def _check_for_update(self) -> None:
         """Ask GitHub in the background. Stays silent unless there is an update."""
+        # A swap that failed relaunches the old build, which otherwise just
+        # re-offers the same update every launch with nothing ever changing.
+        if updater.consume_failure():
+            self._show_update_error(
+                "The last update could not be installed, so SmuggyConverter is "
+                "still on the old version.\n\nThis usually means the app folder "
+                "is locked or read-only. Try moving it somewhere you own, or "
+                "install the update manually.",
+                offer_page=True,
+            )
         self.update_worker = UpdateCheckWorker(self)
         self.update_worker.found.connect(self._on_update_available)
         self.update_worker.start()
@@ -156,21 +166,33 @@ class ConverterWindow(QMainWindow):
         self._start_update_download(info)
 
     def _start_update_download(self, info: dict) -> None:
+        self.update_version = info["version"]
         self.update_progress = QProgressDialog(
-            f"Downloading SmuggyConverter {info['version']}...", "Cancel", 0, 100, self
+            self._update_label(0, info.get("size", 0)), "Cancel", 0, 100, self
         )
         self.update_progress.setWindowTitle("Updating")
         self.update_progress.setWindowModality(Qt.WindowModal)
+        self.update_progress.setMinimumWidth(420)
         self.update_progress.setAutoClose(False)
         self.update_progress.setAutoReset(False)
-        self.update_progress.setStyleSheet(self._toast_style())
+        self.update_progress.setStyleSheet(self._update_progress_style())
 
         self.update_worker = UpdateDownloadWorker(info["url"], self)
-        self.update_worker.progress.connect(self.update_progress.setValue)
+        self.update_worker.progress.connect(self._on_update_progress)
         self.update_worker.finished.connect(self._on_update_downloaded)
         self.update_progress.canceled.connect(self.update_worker.cancel)
         self.update_worker.start()
         self.update_progress.show()
+
+    def _update_label(self, read: int, total: int) -> str:
+        mb = 1_000_000
+        size = f"{read / mb:.1f} MB of {total / mb:.1f} MB" if total else f"{read / mb:.1f} MB"
+        return f"Downloading SmuggyConverter {self.update_version}\n{size}"
+
+    def _on_update_progress(self, read: int, total: int) -> None:
+        self.update_progress.setLabelText(self._update_label(read, total))
+        if total:
+            self.update_progress.setValue(int(read / total * 100))
 
     def _on_update_downloaded(self, success: bool, result: str) -> None:
         self.update_progress.close()
@@ -180,7 +202,27 @@ class ConverterWindow(QMainWindow):
                                         offer_page=True)
             return
 
-        self.update_progress.setLabelText("Installing...")
+        box = QMessageBox(self)
+        box.setWindowTitle("Restart to Finish")
+        box.setText(f"SmuggyConverter {self.update_version} is ready to install.")
+        box.setInformativeText(
+            "The app has to restart to finish updating. It will reopen on its own."
+        )
+        box.setIcon(QMessageBox.Information)
+        box.setStandardButtons(QMessageBox.NoButton)
+        restart_btn = box.addButton("Restart Now", QMessageBox.AcceptRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.setStyleSheet(self._toast_style())
+        box.exec()
+
+        if box.clickedButton() is not restart_btn:
+            # Nothing is staged yet, so dropping the zip leaves the install
+            # untouched; the next launch simply offers the update again.
+            Path(result).unlink(missing_ok=True)
+            logger.info("User deferred restart, discarded download",
+                        extra={"version": self.update_version})
+            return
+
         try:
             updater.apply(Path(result))
         except Exception as exc:
@@ -190,6 +232,18 @@ class ConverterWindow(QMainWindow):
 
         logger.info("Update staged, quitting for swap")
         QApplication.quit()
+
+    def _update_progress_style(self) -> str:
+        return self._toast_style() + """
+            QProgressDialog { background: #1b1b1f; }
+            QProgressDialog QLabel { color: #f2f3f7; font-size: 14px; }
+            QProgressBar { background: #0f0f13; border: 1px solid #2b2b31;
+                           border-radius: 6px; height: 18px; text-align: center;
+                           color: #f2f3f7; font-size: 12px; font-weight: 600; }
+            QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                              stop:0 #c13232, stop:1 #e65050);
+                                  border-radius: 5px; }
+        """
 
     def _show_update_error(self, message: str, offer_page: bool = False) -> None:
         box = QMessageBox(self)

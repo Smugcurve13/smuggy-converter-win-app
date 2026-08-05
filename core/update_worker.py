@@ -18,7 +18,7 @@ class UpdateCheckWorker(QThread):
 
 class UpdateDownloadWorker(QThread):
     """Streams the release zip to a temp file."""
-    progress = Signal(int)  # 0-100, same convention as DownloadWorker
+    progress = Signal(int, int)  # bytes read, total bytes
     finished = Signal(bool, str)  # success, zip path or error message
 
     def __init__(self, url: str, parent=None):
