@@ -19,6 +19,8 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 - **MP4 up to 4K** — 2160p, 1440p, 1080p, 720p, 480p. Files are remuxed rather than
   re-encoded, so a download finishes in seconds instead of minutes.
 - **FFmpeg is bundled** on Windows and macOS releases; nothing to install.
+- **Updates itself** — checks GitHub on launch and, if you say yes, downloads and
+  installs the new version in place, then restarts. Nothing to re-download by hand.
 - **Progress bar and real error messages**, with a one-click **Export Logs** button
   that zips everything needed to diagnose a problem.
 
@@ -189,8 +191,9 @@ sites change constantly.
 | `instagram.py` | Instagram posts, reels and carousels |
 | `config.py` | Paths and platform-aware FFmpeg resolution |
 | `logs.py` | Logging setup and log export |
+| `updater.py` | Release polling, download and the on-restart app swap |
 | `gui/` | PySide6 window and dialogs |
-| `core/` | Background download worker |
+| `core/` | Background download and update workers |
 
 ## Author
 

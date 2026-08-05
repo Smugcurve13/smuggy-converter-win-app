@@ -132,9 +132,15 @@ def create_logs_zip(dest_path: str) -> pathlib.Path:
     return zip_path
 
 
-def default_zip_name() -> str:
-    """Return a suggested zip filename based on today's date."""
-    return f"smuggyconverter_logs_{datetime.now().strftime('%Y-%m-%d')}.zip"
+def default_zip_path() -> str:
+    """Return a suggested absolute path for the exported zip.
+
+    Absolute on purpose: a bare filename is resolved against the process's
+    working directory, which is "/" for an app launched from Finder, and the
+    save dialog then defaults to a read-only filesystem.
+    """
+    name = f"smuggyconverter_logs_{datetime.now().strftime('%Y-%m-%d')}.zip"
+    return os.path.join(home_folder, name)
 
 
 def export_logs():

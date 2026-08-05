@@ -3,9 +3,10 @@ import subprocess
 import platform
 import os
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon, QColor
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QIcon, QColor, QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFileDialog,
@@ -20,17 +21,21 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QDialog,
-    QMessageBox
+    QMessageBox,
+    QProgressDialog
 )
 
 from gui.default_output_dialog import DefaultOutputDirDialog
 from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
 from core.download_worker import DownloadWorker
+from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger, folder as logs_folder, create_logs_zip, default_zip_name
+from logs import logger, folder as logs_folder, create_logs_zip, default_zip_path
+from version import __version__
+import updater
 
 
 class ConverterWindow(QMainWindow):
@@ -73,7 +78,7 @@ class ConverterWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SmuggyConverter")
+        self.setWindowTitle(f"SmuggyConverter v{__version__}")
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
         self.resize(1180, 760)
@@ -85,14 +90,120 @@ class ConverterWindow(QMainWindow):
         self._build_ui()
         self._init_spinner()
         self.worker = None
+        # Separate slot from self.worker: the convert guard uses a single slot
+        # and an update in flight would clobber a running conversion.
+        self.update_worker = None
         QTimer.singleShot(0, self._post_init)
-    
+
     def _post_init(self):
         if self.output_dir is None:
             self._prompt_initial_output_dir()
         else:
             self.output_path_edit.setText(str(self.output_dir))
-            
+        self._check_for_update()
+
+    def _check_for_update(self) -> None:
+        """Ask GitHub in the background. Stays silent unless there is an update."""
+        self.update_worker = UpdateCheckWorker(self)
+        self.update_worker.found.connect(self._on_update_available)
+        self.update_worker.start()
+
+    def _on_update_available(self, info: dict) -> None:
+        size_mb = info.get("size", 0) / 1_000_000
+        box = QMessageBox(self)
+        box.setWindowTitle("Update Available")
+        box.setText(f"SmuggyConverter {info['version']} is available.")
+        box.setInformativeText(
+            f"You are on v{__version__}. The download is about {size_mb:.0f} MB.\n"
+            "SmuggyConverter will restart to finish installing."
+        )
+        box.setIcon(QMessageBox.Information)
+        box.setStandardButtons(QMessageBox.NoButton)
+        update_btn = box.addButton("Update Now", QMessageBox.AcceptRole)
+        notes_btn = box.addButton("What's New", QMessageBox.ActionRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.setStyleSheet(self._toast_style())
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is notes_btn:
+            QDesktopServices.openUrl(QUrl(info["notes_url"]))
+            return
+        if clicked is not update_btn:
+            logger.info("User deferred update", extra={"version": info["version"]})
+            return
+
+        # Fail here rather than after transferring 140 MB.
+        reason = updater.blocked_reason(info.get("size", 0))
+        if reason:
+            logger.warning("Update not possible", extra={"reason": reason})
+            self._show_update_error(f"{reason}\n\nYou can download it manually instead.",
+                                    offer_page=True)
+            return
+
+        if self.worker and self.worker.isRunning():
+            confirm = QMessageBox(self)
+            confirm.setWindowTitle("Conversion in Progress")
+            confirm.setText("Updating will stop the download that is running.")
+            confirm.setIcon(QMessageBox.Warning)
+            confirm.setStandardButtons(QMessageBox.Cancel)
+            go_btn = confirm.addButton("Update Anyway", QMessageBox.AcceptRole)
+            confirm.setStyleSheet(self._toast_style())
+            confirm.exec()
+            if confirm.clickedButton() is not go_btn:
+                return
+
+        self._start_update_download(info)
+
+    def _start_update_download(self, info: dict) -> None:
+        self.update_progress = QProgressDialog(
+            f"Downloading SmuggyConverter {info['version']}...", "Cancel", 0, 100, self
+        )
+        self.update_progress.setWindowTitle("Updating")
+        self.update_progress.setWindowModality(Qt.WindowModal)
+        self.update_progress.setAutoClose(False)
+        self.update_progress.setAutoReset(False)
+        self.update_progress.setStyleSheet(self._toast_style())
+
+        self.update_worker = UpdateDownloadWorker(info["url"], self)
+        self.update_worker.progress.connect(self.update_progress.setValue)
+        self.update_worker.finished.connect(self._on_update_downloaded)
+        self.update_progress.canceled.connect(self.update_worker.cancel)
+        self.update_worker.start()
+        self.update_progress.show()
+
+    def _on_update_downloaded(self, success: bool, result: str) -> None:
+        self.update_progress.close()
+        if not success:
+            if result:  # empty means the user cancelled, which needs no dialog
+                self._show_update_error(f"Could not download the update:\n{result}",
+                                        offer_page=True)
+            return
+
+        self.update_progress.setLabelText("Installing...")
+        try:
+            updater.apply(Path(result))
+        except Exception as exc:
+            logger.error("Failed to stage update", extra={"error": str(exc)})
+            self._show_update_error(f"Could not install the update:\n{exc}", offer_page=True)
+            return
+
+        logger.info("Update staged, quitting for swap")
+        QApplication.quit()
+
+    def _show_update_error(self, message: str, offer_page: bool = False) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("Update Failed")
+        box.setText(message)
+        box.setIcon(QMessageBox.Warning)
+        box.setStandardButtons(QMessageBox.Ok)
+        page_btn = box.addButton("Open Releases", QMessageBox.ActionRole) if offer_page else None
+        box.setStyleSheet(self._toast_style())
+        box.exec()
+        if page_btn is not None and box.clickedButton() is page_btn:
+            QDesktopServices.openUrl(QUrl(updater.RELEASES_URL))
+
+
     def _init_spinner(self):
         """Initialize the waiting spinner for the convert button."""
         self.spinner = SpinnerWidget(
@@ -585,7 +696,7 @@ class ConverterWindow(QMainWindow):
         dest, _ = QFileDialog.getSaveFileName(
             self,
             "Save Logs Zip",
-            default_zip_name(),
+            default_zip_path(),
             "Zip Files (*.zip)",
         )
         if not dest:

@@ -7,7 +7,25 @@ OUTPUT_DIR_FILE = "output_dir.txt"
 
 icon_path = Path(__file__).parent / ICON_PATH
 ico_icon_path = Path(__file__).parent / ICO_ICON_PATH
-output_dir_file = Path(__file__).parent / OUTPUT_DIR_FILE
+
+# Settings live in the home dir, not the bundle: an update replaces the whole app
+# directory, which would otherwise wipe the saved output folder every time.
+# Same root logs.py already writes to.
+APP_DATA_DIR = Path.home() / ".SmuggyConverter"
+output_dir_file = APP_DATA_DIR / OUTPUT_DIR_FILE
+_legacy_output_dir_file = Path(__file__).parent / OUTPUT_DIR_FILE
+
+try:
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # One-time migration for anyone upgrading from a build that stored it in-bundle.
+    if not output_dir_file.exists() and _legacy_output_dir_file.exists():
+        output_dir_file.write_text(
+            _legacy_output_dir_file.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+except OSError:
+    # ponytail: a home dir we cannot write to just means the folder is re-picked
+    # each launch, which _load_output_dir already handles.
+    pass
 
 
 import os

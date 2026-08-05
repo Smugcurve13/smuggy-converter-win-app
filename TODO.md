@@ -24,8 +24,8 @@ Features:
 - [x] Instagram reels and posts (MP3 and MP4, public only)
 - [x] Up to 4K video (2160p / 1440p)
 - [ ] Website for outreach and link to .exe and .dmg
-- [ ] Auto-update
-- [ ] Popup to show new version available (poll GitHub releases)
+- [x] Auto-update
+- [x] Popup to show new version available (poll GitHub releases)
 - [ ] Clear form on success
 - [ ] Add safeguards to prevent YouTube IP flagging
 - [ ] History
