@@ -4,6 +4,7 @@ ffmpeg==1.4
 ffmpeg-python==0.2.0
 future==1.0.0
 macholib==1.16.4
+mutagen==1.48.1
 packaging==26.0
 pefile==2024.8.26
 pillow==12.3.0
