@@ -27,6 +27,12 @@ def _base_opts(progress_callback=None, throttle=False):
         "ignoreerrors": False,
         "logger": logger,
         "ffmpeg_location": FFMPEG_DIR,
+        "retries": 10,
+        "fragment_retries": 10,
+        "extractor_retries": 3,
+        "file_access_retries": 3,
+        "continuedl": True,
+        "overwrites": True,
     }
     if throttle:
         # Back-to-back requests earn "HTTP Error 403: Forbidden" partway through a
@@ -98,7 +104,7 @@ def _format_opts(fmt, quality, source_metadata=True):
 
 
 def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, title=None,
-                         source_metadata=True, throttle=False):
+                         source_metadata=True, throttle=False, download_archive=None):
     """Download one URL and produce a single {title}.{fmt} file. The only downloader.
 
     `url` may be any yt-dlp input, including a search like "ytsearch1:some query".
@@ -110,6 +116,8 @@ def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=N
     os.makedirs(base_dir, exist_ok=True)
 
     opts = _base_opts(progress_callback, throttle)
+    if download_archive:
+        opts["download_archive"] = download_archive
     try:
         if title is None:
             with yt_dlp.YoutubeDL({**opts, "skip_download": True}) as ydl:
@@ -141,12 +149,20 @@ def download_selected(playlist_title, videos_dict, fmt, quality, target_dir=None
     playlist_dir = os.path.join(base_dir, sanitize_filename(playlist_title))
     os.makedirs(playlist_dir, exist_ok=True)
 
-    results = []
+    done, failed = [], []
     total = len(videos_dict)
-    for idx, url in enumerate(videos_dict.values()):
-        results.append(download_and_convert(url, fmt, quality, target_dir=playlist_dir,
-                                            throttle=True))
+    archive = os.path.join(playlist_dir, f".smuggyconverter-{fmt}-{quality or 'best'}.archive")
+    for idx, (title, url) in enumerate(videos_dict.items()):
+        try:
+            done.append(download_and_convert(
+                url, fmt, quality, target_dir=playlist_dir, title=title, throttle=True,
+                download_archive=archive,
+            ))
+        except Exception as e:
+            logger.error("Playlist item failed", extra={"title": title, "url": url, "error": str(e)})
+            failed.append(title)
         if progress_callback:
             progress_callback(int((idx + 1) / total * 100) if total else 100)
-    logger.info("Playlist complete", extra={"playlist": playlist_title, "count": len(results)})
-    return results
+    logger.info("Playlist complete", extra={"playlist": playlist_title,
+                                            "downloaded": len(done), "failed": len(failed)})
+    return done, failed

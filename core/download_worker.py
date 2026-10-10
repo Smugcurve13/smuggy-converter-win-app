@@ -55,7 +55,7 @@ class DownloadWorker(QThread):
                 self.finished.emit(True, msg, done[0])
             elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
-                download_selected(
+                done, failed = download_selected(
                     self.playlist_title,
                     videos_dict,
                     self.fmt,
@@ -63,7 +63,14 @@ class DownloadWorker(QThread):
                     target_dir=self.output_dir,
                     progress_callback=self.progress.emit,
                 )
-                self.finished.emit(True, f'{self.playlist_title} is saved', self.playlist_title)
+                if not done:
+                    raise Exception(f"No tracks could be downloaded ({len(failed)} failed)")
+                msg = f"{len(done)} tracks saved"
+                if failed:
+                    msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
+                    if len(failed) > 3:
+                        msg += f" and {len(failed) - 3} more"
+                self.finished.emit(True, msg, self.playlist_title)
             else:
                 filename = download_and_convert(
                     self.url,
