@@ -6,7 +6,7 @@ import socket
 import subprocess
 import sys
 import platform
-import zipfile
+
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
@@ -117,29 +117,22 @@ logger.info("ffprobe      : %s", FFPROBE_PATH)
 logger.info("JS runtimes  : %s", _js_runtimes())
 logger.info("=" * 60)
 
-def create_logs_zip(dest_path: str) -> pathlib.Path:
-    """Zip all log files in the logs folder into dest_path.
-
-    dest_path should be the full path to the target .zip file.
-    Returns the Path of the created zip.
-    """
-    zip_path = pathlib.Path(dest_path)
-    log_dir = pathlib.Path(folder)
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for log_file in sorted(log_dir.iterdir()):
-            if log_file.is_file():
-                zf.write(log_file, log_file.name)
-    return zip_path
+def export_log(dest_path: str | pathlib.Path) -> pathlib.Path:
+    """Copy the current log to dest_path after flushing pending records."""
+    file_handler.flush()
+    destination = pathlib.Path(dest_path)
+    shutil.copyfile(file, destination)
+    return destination
 
 
-def default_zip_path() -> str:
-    """Return a suggested absolute path for the exported zip.
+def default_log_path() -> str:
+    """Return a suggested absolute path for the exported log.
 
     Absolute on purpose: a bare filename is resolved against the process's
     working directory, which is "/" for an app launched from Finder, and the
     save dialog then defaults to a read-only filesystem.
     """
-    name = f"smuggyconverter_logs_{datetime.now().strftime('%Y-%m-%d')}.zip"
+    name = f"smuggyconverter_{datetime.now().strftime('%Y-%m-%d')}.log"
     return os.path.join(home_folder, name)
 
 

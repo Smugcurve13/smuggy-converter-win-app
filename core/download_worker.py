@@ -40,7 +40,7 @@ class DownloadWorker(QThread):
                     msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
                     if len(failed) > 3:
                         msg += f" and {len(failed) - 3} more"
-                self.finished.emit(True, msg, "Spotify")
+                self.finished.emit(not failed, msg, "Spotify")
             elif "instagram" in self.mode:
                 done, skipped = download_instagram(
                     self.url,
@@ -52,7 +52,7 @@ class DownloadWorker(QThread):
                 msg = done[0] + " is saved" if len(done) == 1 else f"{len(done)} files saved"
                 if skipped:
                     msg += f", {len(skipped)} item(s) had no video"
-                self.finished.emit(True, msg, done[0])
+                self.finished.emit(not skipped, msg, done[0])
             elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
                 done, failed = download_selected(
@@ -70,7 +70,7 @@ class DownloadWorker(QThread):
                     msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
                     if len(failed) > 3:
                         msg += f" and {len(failed) - 3} more"
-                self.finished.emit(True, msg, self.playlist_title)
+                self.finished.emit(not failed, msg, self.playlist_title)
             else:
                 filename = download_and_convert(
                     self.url,

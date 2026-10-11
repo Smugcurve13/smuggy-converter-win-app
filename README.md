@@ -22,7 +22,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 - **Updates itself** — checks GitHub on launch and, if you say yes, downloads and
   installs the new version in place, then restarts. Nothing to re-download by hand.
 - **Progress bar and real error messages**, with a one-click **Export Logs** button
-  that zips everything needed to diagnose a problem.
+  that saves the current log file for diagnosis.
 
 ### A note on 4K
 
@@ -148,7 +148,8 @@ Written to `~/.SmuggyConverter/logs/smuggyconverter.log`, rotated daily, 30 days
 kept. On Windows that's `C:\Users\<you>\.SmuggyConverter\logs\`.
 
 The **Open Logs Folder** button takes you there; **Export Logs** (offered on any
-failure) zips them for sharing. Each run records the app version, yt-dlp version,
+download failure, including partial playlist failures) saves the current log for
+sharing. Each run records the app version, yt-dlp version,
 Python version and resolved FFmpeg path, which is usually enough to identify a
 problem without any back and forth.
 

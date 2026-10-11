@@ -33,7 +33,7 @@ from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
 from playlist import extract_playlist_info
 from config import icon_path, output_dir_file
-from logs import logger, folder as logs_folder, create_logs_zip, default_zip_path
+from logs import logger, folder as logs_folder, export_log, default_log_path
 from version import __version__
 import updater
 
@@ -717,7 +717,7 @@ class ConverterWindow(QMainWindow):
     def _on_download_finished(self, success: bool, message: str, video_name: str):
         """Handle download completion."""
         self._stop_loading()
-        self._show_toast(message, success)
+        self._show_toast(message, success, show_failure_help=not success)
         
         if success:
             logger.info("Download completed successfully", extra={"video_name": video_name})
@@ -726,7 +726,7 @@ class ConverterWindow(QMainWindow):
     def _on_download_progress(self, percent: int):
         self.progress_bar.setValue(percent)
     
-    def _show_toast(self, message: str, is_success: bool):
+    def _show_toast(self, message: str, is_success: bool, show_failure_help: bool = False):
         """Show a toast message to the user."""
         
         msg_box = QMessageBox(self)
@@ -734,7 +734,11 @@ class ConverterWindow(QMainWindow):
         msg_box.setText(message)
         msg_box.setIcon(QMessageBox.Information if is_success else QMessageBox.Warning)
         msg_box.setStandardButtons(QMessageBox.Ok)
-        if not is_success:
+        if show_failure_help:
+            msg_box.setInformativeText(
+                "Possible reasons: a video may be private, deleted, unavailable in your region, "
+                "age/sign-in restricted, or temporarily unreachable. Export the log for the exact cause."
+            )
             export_btn = msg_box.addButton("Export Logs", QMessageBox.ActionRole)
         else:
             export_btn = None
@@ -749,18 +753,18 @@ class ConverterWindow(QMainWindow):
     def _export_logs_dialog(self) -> None:
         dest, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Logs Zip",
-            default_zip_path(),
-            "Zip Files (*.zip)",
+            "Save Log File",
+            default_log_path(),
+            "Log Files (*.log)",
         )
         if not dest:
             return
         try:
-            zip_path = create_logs_zip(dest)
-            logger.info("Logs exported to %s", zip_path)
+            log_path = export_log(dest)
+            logger.info("Log exported to %s", log_path)
             ok = QMessageBox(self)
             ok.setWindowTitle("Export Successful")
-            ok.setText(f"Logs saved to:\n{zip_path}")
+            ok.setText(f"Log saved to:\n{log_path}")
             ok.setIcon(QMessageBox.Information)
             ok.setStandardButtons(QMessageBox.Ok)
             ok.setStyleSheet(self._toast_style())

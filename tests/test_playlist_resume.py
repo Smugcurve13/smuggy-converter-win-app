@@ -125,7 +125,7 @@ class PlaylistWorkerTests(unittest.TestCase):
 
             cases = [
                 ((["One.mp3"], ["Two"]),
-                 (True, "1 tracks saved, 1 failed: Two", "Mix")),
+                 (False, "1 tracks saved, 1 failed: Two", "Mix")),
                 (([], ["One", "Two"]),
                  (False, "No tracks could be downloaded (2 failed)", "")),
             ]

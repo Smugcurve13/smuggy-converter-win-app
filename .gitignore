@@ -11,4 +11,4 @@ output_dir.txt
 assets/ffmpeg
 venv
 .DS_Store
-smuggyconverter_logs_*.zip
+smuggyconverter_*.log
