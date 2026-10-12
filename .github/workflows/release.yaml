@@ -182,7 +182,7 @@ jobs:
 
           1. Download **SmuggyConverter-macos-arm64-${VERSION}.zip** below.
           2. Unzip and drag **SmuggyConverter.app** into Applications.
-          3. First launch only, run `xattr -cr /Applications/SmuggyConverter.app`, then right-click the app and choose **Open**.
+          3. First launch only, run \`xattr -cr /Applications/SmuggyConverter.app\`, then right-click the app and choose **Open**.
 
           > Apple Silicon (M1 or newer) only. FFmpeg is bundled. The app is ad-hoc signed, not notarized.
           EOF
