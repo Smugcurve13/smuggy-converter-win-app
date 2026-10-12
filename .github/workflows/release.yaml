@@ -202,7 +202,7 @@ jobs:
           name: "SmuggyConverter ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: false
           body_path: release-notes.md
           files: |

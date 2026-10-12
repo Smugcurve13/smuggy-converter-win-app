@@ -22,6 +22,7 @@ NOTES = {
         ],
     }
 }
+NOTES["1.4.0-alpha.1"] = NOTES["1.4.0"]
 
 
 def get_notes(version):
