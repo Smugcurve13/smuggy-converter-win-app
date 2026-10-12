@@ -43,6 +43,7 @@ class WindowProgressTests(unittest.TestCase):
 
             window._on_download_status("Downloading 1 of 2 — Track")
             self.assertEqual(window.progress_bar.format(), "Downloading 1 of 2 — Track")
+            self.assertEqual(window.version_label.text(), f"v{converter_window.__version__}")
             window.close()
 
 

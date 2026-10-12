@@ -327,6 +327,7 @@ class ConverterWindow(QMainWindow):
             QScrollArea > QWidget > QWidget {
                 background: transparent;
             }
+            QLabel#version { color: #8a8d96; font-size: 12px; }
             """
         )
 
@@ -680,6 +681,12 @@ class ConverterWindow(QMainWindow):
         note.setAlignment(Qt.AlignCenter)
         note.setObjectName("subtitle")
         layout.addWidget(note)
+        version_row = QHBoxLayout()
+        version_row.addStretch()
+        self.version_label = QLabel(f"v{__version__}")
+        self.version_label.setObjectName("version")
+        version_row.addWidget(self.version_label)
+        layout.addLayout(version_row)
         return layout
 
     def _on_convert_clicked(self) -> None:
