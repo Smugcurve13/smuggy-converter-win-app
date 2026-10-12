@@ -10,16 +10,18 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QCheckBox,
 )
+from file_utils import sanitize_filename
 
 
 class PlaylistSelectionDialog(QDialog):
     """Dialog for selecting videos from a playlist."""
     
-    def __init__(self, playlist_title: str, video_data: list, parent=None):
+    def __init__(self, playlist_title: str, video_data: list, parent=None, output_dir=None):
         super().__init__(parent)
         self.playlist_title = playlist_title
         self.video_data = video_data
         self.selected_videos = []
+        self.output_dir = output_dir
         self.setWindowTitle("Select Videos")
         self.setModal(True)
         self.resize(700, 600)
@@ -62,6 +64,9 @@ class PlaylistSelectionDialog(QDialog):
             }
             QListWidget::item:hover {
                 background: #2d2a2f;
+            }
+            QListWidget::item:disabled {
+                color: #8a8d96;
             }
             QListWidget::indicator {
                 width: 18px;
@@ -124,6 +129,17 @@ class PlaylistSelectionDialog(QDialog):
         title_label = QLabel(self.playlist_title)
         title_label.setObjectName("playlistTitle")
         layout.addWidget(title_label)
+
+        destination = ""
+        if self.output_dir:
+            destination = f"\nSaved to: {self.output_dir}/{sanitize_filename(self.playlist_title)}"
+        guidance = QLabel(
+            "Completed items with the same folder, format, and quality are skipped; "
+            "failed or unfinished items are retried. Availability found later is reported at completion."
+            + destination
+        )
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
         
         # Search box
         search_label = QLabel("Search:")
@@ -168,13 +184,23 @@ class PlaylistSelectionDialog(QDialog):
         """Populate the list with video data."""
         self.video_list.clear()
         for video in self.video_data:
-            url, title, duration = video
+            url, title, duration, *availability = video
+            reason = availability[0] if availability else None
             item_text = f"{title}  •  {duration}"
+            if reason:
+                item_text += f"  —  {reason}"
             item = QListWidgetItem(item_text)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            if reason:
+                item.setFlags(item.flags() & ~Qt.ItemIsEnabled & ~Qt.ItemIsUserCheckable)
+            else:
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Unchecked)
             item.setData(Qt.UserRole, video)  # Store full video data
             self.video_list.addItem(item)
+
+    @staticmethod
+    def _is_selectable(item):
+        return bool(item.flags() & Qt.ItemIsEnabled) and bool(item.flags() & Qt.ItemIsUserCheckable)
     
     def _filter_list(self):
         """Filter the video list based on search text."""
@@ -182,7 +208,7 @@ class PlaylistSelectionDialog(QDialog):
         for i in range(self.video_list.count()):
             item = self.video_list.item(i)
             video_data = item.data(Qt.UserRole)
-            _, title, _ = video_data
+            _, title, *_ = video_data
             item.setHidden(search_text not in title.lower())
         self._update_select_all_state()
     
@@ -197,7 +223,7 @@ class PlaylistSelectionDialog(QDialog):
         for i in range(self.video_list.count()):
             item = self.video_list.item(i)
 
-            if item.isHidden():
+            if item.isHidden() or not self._is_selectable(item):
                 continue
 
             visible += 1
@@ -212,17 +238,11 @@ class PlaylistSelectionDialog(QDialog):
     
     def _toggle_select_all(self, checked):
         """Select or deselect all visible items."""
-        visible_count = 0
-        for i in range(self.video_list.count()):
-            if not self.video_list.item(i).isHidden():
-                visible_count += 1
-        state_label = "checked" if checked else "unchecked"
-
         with QSignalBlocker(self.video_list):
             check_state = Qt.Checked if checked else Qt.Unchecked
             for i in range(self.video_list.count()):
                 item = self.video_list.item(i)
-                if not item.isHidden():
+                if not item.isHidden() and self._is_selectable(item):
                     item.setCheckState(check_state)
 
         self._update_select_all_state()
@@ -232,7 +252,7 @@ class PlaylistSelectionDialog(QDialog):
         checked_items = []
         for i in range(self.video_list.count()):
             item = self.video_list.item(i)
-            if item.checkState() == Qt.Checked:
+            if self._is_selectable(item) and item.checkState() == Qt.Checked:
                 checked_items.append(item)
         
         if not checked_items:

@@ -1,9 +1,11 @@
+import json
 from pathlib import Path
 
 
 ICON_PATH = "assets/logo.png"
 ICO_ICON_PATH = "assets/icon.ico"
 OUTPUT_DIR_FILE = "output_dir.txt"
+SETTINGS_FILE = "settings.json"
 
 icon_path = Path(__file__).parent / ICON_PATH
 ico_icon_path = Path(__file__).parent / ICO_ICON_PATH
@@ -13,6 +15,7 @@ ico_icon_path = Path(__file__).parent / ICO_ICON_PATH
 # Same root logs.py already writes to.
 APP_DATA_DIR = Path.home() / ".SmuggyConverter"
 output_dir_file = APP_DATA_DIR / OUTPUT_DIR_FILE
+settings_file = APP_DATA_DIR / SETTINGS_FILE
 _legacy_output_dir_file = Path(__file__).parent / OUTPUT_DIR_FILE
 
 try:
@@ -26,6 +29,39 @@ except OSError:
     # ponytail: a home dir we cannot write to just means the folder is re-picked
     # each launch, which _load_output_dir already handles.
     pass
+
+
+def save_settings(settings: dict) -> None:
+    """Atomically replace the app settings document."""
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = settings_file.with_suffix(".tmp")
+    temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(settings_file)
+
+
+def load_settings() -> dict:
+    """Load saved settings and migrate the legacy output-folder selection."""
+    try:
+        settings = json.loads(settings_file.read_text(encoding="utf-8"))
+        if not isinstance(settings, dict):
+            settings = {}
+    except (OSError, json.JSONDecodeError):
+        settings = {}
+
+    if "output_folder" not in settings:
+        for legacy_file in (output_dir_file, _legacy_output_dir_file):
+            try:
+                output_folder = legacy_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if output_folder:
+                settings["output_folder"] = output_folder
+                try:
+                    save_settings(settings)
+                except OSError:
+                    pass
+                break
+    return settings
 
 
 import os

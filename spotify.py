@@ -15,7 +15,7 @@ import urllib.request
 from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK
 from mutagen.mp3 import MP3
 
-from downloader import download_and_convert
+from downloader import DownloadCancelled, download_and_convert
 from file_utils import MEDIA_DIR, sanitize_filename
 from logs import logger
 
@@ -129,9 +129,14 @@ def _embed_metadata(mp3_path, track, cover):
     audio.save()
 
 
-def download_spotify_csv(csv_path, quality, target_dir=None, progress_callback=None):
-    """Download every track in an Exportify CSV. Returns (downloaded, [failed track names])."""
-    tracks = read_exportify_csv(csv_path)
+def _track_name(track):
+    return f"{track['track']} - {track['artists']}" if track["artists"] else track["track"]
+
+
+def download_spotify_csv(csv_path, quality, target_dir=None, progress_callback=None,
+                         status_callback=None, is_cancelled=None, tracks=None):
+    """Download every track in an Exportify CSV. Returns (downloaded, failed tracks)."""
+    tracks = tracks if tracks is not None else read_exportify_csv(csv_path)
     base_dir = target_dir if target_dir else MEDIA_DIR
     playlist_dir = os.path.join(
         base_dir, sanitize_filename(os.path.splitext(os.path.basename(csv_path))[0]) or "spotify"
@@ -140,8 +145,10 @@ def download_spotify_csv(csv_path, quality, target_dir=None, progress_callback=N
 
     done, failed, no_art = [], [], 0
     total = len(tracks)
-    for idx, track in enumerate(tracks):
-        name = f"{track['track']} - {track['artists']}" if track["artists"] else track["track"]
+    for idx, track in enumerate(tracks, start=1):
+        if is_cancelled and is_cancelled():
+            raise DownloadCancelled(done, failed + tracks[idx - 1:])
+        name = _track_name(track)
         try:
             # ytsearch1 picks the top match; "<title> <artist>" ranks the real
             # track above covers and lyric videos.
@@ -154,17 +161,24 @@ def download_spotify_csv(csv_path, quality, target_dir=None, progress_callback=N
                 title=name,
                 source_metadata=False,
                 throttle=True,
+                progress_callback=progress_callback,
+                status_callback=(
+                    lambda stage, title, item=idx: status_callback(stage, item, total, title)
+                ) if status_callback else None,
+                is_cancelled=is_cancelled,
             )
             cover = _fetch_cover(track["image_url"] or _cover_url_from_uri(track["uri"]))
             if not cover:
                 no_art += 1
             _embed_metadata(os.path.join(playlist_dir, filename), track, cover)
             done.append(filename)
+        except DownloadCancelled:
+            raise DownloadCancelled(done, failed + tracks[idx - 1:])
         except Exception as e:
             logger.error("Spotify track failed", extra={"track": name, "error": str(e)})
-            failed.append(name)
+            failed.append(track)
         if progress_callback:
-            progress_callback(int((idx + 1) / total * 100) if total else 100)
+            progress_callback(int(idx / total * 100) if total else 100)
 
     logger.info(
         "Spotify CSV complete",

@@ -32,6 +32,16 @@ class _ErrorCapturingLogger:
         logger.error(msg)
 
 
+def _unavailable_reason(entry):
+    availability = str(entry.get("availability") or "").lower()
+    title = str(entry.get("title") or "").lower()
+    if availability == "private" or "private video" in title:
+        return "Private"
+    if availability in {"unavailable", "deleted"} or "deleted video" in title:
+        return "Deleted"
+    return None
+
+
 def extract_playlist_info(url):
     """Return (playlist_title, [[url, title, duration], ...]).
 
@@ -62,9 +72,20 @@ def extract_playlist_info(url):
 
     playlist_title = info.get("title", playlist_title)
     for entry in info.get("entries", []):
-        if not entry or "id" not in entry:
+        if not entry:
             continue
         duration = entry.get("duration") or 0
+        unavailable = _unavailable_reason(entry)
+        if unavailable:
+            final_array.append([
+                "",
+                entry.get("title", unavailable),
+                str(datetime.timedelta(seconds=duration)),
+                unavailable,
+            ])
+            continue
+        if "id" not in entry:
+            continue
         final_array.append([
             f"https://www.youtube.com/watch?v={entry['id']}",
             entry.get("title", "Unknown"),
@@ -75,8 +96,8 @@ def extract_playlist_info(url):
 
 
 def extract_video_info_from_array(final_array):
-    """[[url, title, duration], ...] -> {title: url}"""
-    return {row[1]: row[0] for row in final_array}
+    """[[url, title, duration], ...] -> [(title, url), ...]."""
+    return [(row[1], row[0]) for row in final_array if row[0]]
 
 
 if __name__ == "__main__":
@@ -136,9 +157,9 @@ if __name__ == "__main__":
         assert [r[1] for r in rows] == ["One", "Two"], rows
         assert rows[0][2] == "0:01:01" and rows[1][2] == "0:00:00", rows
         assert rows[0][0] == "https://www.youtube.com/watch?v=aaa"
-        assert extract_video_info_from_array(rows) == {
-            "One": "https://www.youtube.com/watch?v=aaa",
-            "Two": "https://www.youtube.com/watch?v=bbb",
-        }
+        assert extract_video_info_from_array(rows) == [
+            ("One", "https://www.youtube.com/watch?v=aaa"),
+            ("Two", "https://www.youtube.com/watch?v=bbb"),
+        ]
 
     print("playlist self-checks ok")

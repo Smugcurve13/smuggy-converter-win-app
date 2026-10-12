@@ -154,6 +154,39 @@ jobs:
     if: github.ref_type == 'tag'
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Render and validate release notes
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          app_version=$(python -c "from version import __version__; print(__version__)")
+          [ "$tag_version" = "$app_version" ] || {
+            echo "::error::tag v$tag_version does not match version.py ($app_version)"; exit 1; }
+          python release_notes.py "$tag_version" > release-notes.md
+          [ -s release-notes.md ] || { echo "::error::missing release notes"; exit 1; }
+          cat >> release-notes.md <<EOF
+
+          ---
+
+          ## Windows
+
+          1. Download **SmuggyConverter-windows-${VERSION}.zip** below.
+          2. Extract the zip to any folder.
+          3. Run **SmuggyConverter.exe** — no installation required.
+
+          > Windows 10 or later (64-bit). FFmpeg is bundled.
+
+          ## macOS (Apple Silicon)
+
+          1. Download **SmuggyConverter-macos-arm64-${VERSION}.zip** below.
+          2. Unzip and drag **SmuggyConverter.app** into Applications.
+          3. First launch only, run `xattr -cr /Applications/SmuggyConverter.app`, then right-click the app and choose **Open**.
+
+          > Apple Silicon (M1 or newer) only. FFmpeg is bundled. The app is ad-hoc signed, not notarized.
+          EOF
+
       - name: Download builds
         uses: actions/download-artifact@v4
         with:
@@ -170,46 +203,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
-          body: |
-            ## SmuggyConverter ${{ github.ref_name }}
-
-            Download YouTube videos and Spotify playlists as tagged MP3s or MP4 video, via yt-dlp with a PySide6 GUI.
-
-            ---
-
-            ### Windows
-
-            1. Download **SmuggyConverter-windows-${{ env.VERSION }}.zip** below.
-            2. Extract the zip to any folder.
-            3. Run **SmuggyConverter.exe** — no installation required.
-
-            > Windows 10 or later (64-bit). FFmpeg is bundled.
-
-            ### macOS (Apple Silicon)
-
-            1. Download **SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip** below.
-            2. Unzip and drag **SmuggyConverter.app** into Applications.
-            3. First launch only, clear the download quarantine flag:
-
-            ```
-            xattr -cr /Applications/SmuggyConverter.app
-            ```
-
-            Then right-click the app and choose **Open**.
-
-            > Apple Silicon (M1 or newer) — Intel Macs are not supported by this build.
-            > FFmpeg is bundled.
-            >
-            > **Why the extra step?** The app is ad-hoc signed but not notarized,
-            > which needs a paid Apple Developer account. macOS therefore flags it
-            > as coming from an unidentified developer. The command above removes
-            > the quarantine attribute macOS adds to downloaded files.
-
-            ---
-
-            ### What's Changed
-
+          generate_release_notes: false
+          body_path: release-notes.md
           files: |
             dist/SmuggyConverter-windows-${{ env.VERSION }}.zip
             dist/SmuggyConverter-macos-arm64-${{ env.VERSION }}.zip

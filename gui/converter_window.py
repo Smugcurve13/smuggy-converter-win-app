@@ -8,6 +8,7 @@ from PySide6.QtGui import QIcon, QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
@@ -28,11 +29,12 @@ from PySide6.QtWidgets import (
 from gui.default_output_dialog import DefaultOutputDirDialog
 from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
+from gui.welcome_dialog import WelcomeDialog
 from core.download_worker import DownloadWorker
 from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
 from playlist import extract_playlist_info
-from config import icon_path, output_dir_file
+from config import icon_path, load_settings, save_settings
 from logs import logger, folder as logs_folder, export_log, default_log_path
 from version import __version__
 import updater
@@ -52,10 +54,11 @@ class ConverterWindow(QMainWindow):
         spotify = "spotify" in mode
 
         # Spotify takes a CSV instead of a URL, and is always MP3.
-        for w in (self.url_label, self.url_input, self.format_label, self.format_combo):
+        for w in (self.url_label, self.url_input, self.remember_url_checkbox, self.format_label, self.format_combo):
             w.setVisible(not spotify)
         for w in (self.csv_label, self.csv_row):
             w.setVisible(spotify)
+        self.spotify_help_btn.setVisible(spotify)
 
         if spotify:
             self.accent.setText("from Spotify")
@@ -84,10 +87,13 @@ class ConverterWindow(QMainWindow):
         self.resize(1180, 760)
         self.original_button_text = "Convert and Download"
         self.setMinimumSize(960, 600)
+        self.settings = load_settings()
+        self._applying_settings = False
         self.output_dir: Path | None = None
         self._load_output_dir()
         self._apply_theme()
         self._build_ui()
+        self._apply_settings()
         self._init_spinner()
         self.worker = None
         # Separate slot from self.worker: the convert guard uses a single slot
@@ -100,7 +106,18 @@ class ConverterWindow(QMainWindow):
             self._prompt_initial_output_dir()
         else:
             self.output_path_edit.setText(str(self.output_dir))
+        self._show_startup_notes()
         self._check_for_update()
+
+    def _show_startup_notes(self):
+        onboarding = not self.settings.get("onboarding_completed")
+        if not onboarding and self.settings.get("last_seen_version") == __version__:
+            return
+        dialog = WelcomeDialog(__version__, onboarding, self)
+        if dialog.exec() == QDialog.Accepted:
+            self.settings["onboarding_completed"] = True
+            self.settings["last_seen_version"] = __version__
+            self._save_preferences()
 
     def _check_for_update(self) -> None:
         """Ask GitHub in the background. Stays silent unless there is an update."""
@@ -376,7 +393,7 @@ class ConverterWindow(QMainWindow):
         modes.setSpacing(10)
         modes.addStretch()
         self.mode_group = QButtonGroup(self)
-        self.mode_group.buttonClicked.connect(self._update_url_mode)
+        self.mode_group.buttonClicked.connect(self._on_mode_changed)
         
         for text in ["YT Video", "YT Playlist", "Spotify", "Instagram"]:
             btn = QPushButton(text)
@@ -424,6 +441,9 @@ class ConverterWindow(QMainWindow):
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=...")
         self.url_input.setMinimumHeight(42)
+        self.remember_url_checkbox = QCheckBox("Remember last URL on this device")
+        self.remember_url_checkbox.toggled.connect(self._save_preferences)
+        self.url_input.textChanged.connect(self._save_preferences)
 
     # Exportify CSV (Spotify mode only)
         self.csv_label = QLabel("Exportify CSV File:")
@@ -441,6 +461,8 @@ class ConverterWindow(QMainWindow):
         csv_layout.addWidget(csv_browse)
         self.csv_row = QWidget()
         self.csv_row.setLayout(csv_layout)
+        self.spotify_help_btn = QPushButton("How does this work?")
+        self.spotify_help_btn.clicked.connect(self._show_spotify_help)
 
     # Format
         self.format_label = QLabel("Output Format:")
@@ -449,20 +471,23 @@ class ConverterWindow(QMainWindow):
         self.format_combo.setMinimumHeight(42)
         # _update_url_mode is the full refresh: labels, accent, visibility and
         # quality items. Format changes need all of it, not just the items.
-        self.format_combo.currentTextChanged.connect(self._update_url_mode)
+        self.format_combo.currentTextChanged.connect(self._on_format_changed)
 
     # Quality
         self.quality_label = QLabel("Audio Quality:")
         self.quality_combo = QComboBox()
         self.quality_combo.setMinimumHeight(42)
+        self.quality_combo.currentIndexChanged.connect(self._save_preferences)
 
     # Build form layout
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
         form_grid.addWidget(self.url_label)
         form_grid.addWidget(self.url_input)
+        form_grid.addWidget(self.remember_url_checkbox)
         form_grid.addWidget(self.csv_label)
         form_grid.addWidget(self.csv_row)
+        form_grid.addWidget(self.spotify_help_btn)
         form_grid.addWidget(self.format_label)
         form_grid.addWidget(self.format_combo)
         form_grid.addWidget(self.quality_label)
@@ -498,21 +523,28 @@ class ConverterWindow(QMainWindow):
         Spotify is always audio; it must never inherit the format combo's state,
         which is how video resolutions ended up under "Audio Quality:".
         """
+        if self.quality_combo.count() and not self._applying_settings:
+            previous_key = "audio_quality" if self.quality_label.text().startswith("Audio") else "video_quality"
+            self.settings[previous_key] = self.quality_combo.currentData()
+
         if "spotify" in self._current_mode() or self._current_format() == "mp3":
             self.quality_label.setText("Audio Quality:")
             entries = self.AUDIO_QUALITIES
+            quality_key = "audio_quality"
         else:
             self.quality_label.setText("Video Quality:")
             entries = self.VIDEO_QUALITIES
+            quality_key = "video_quality"
 
-        previous = self.quality_combo.currentData()
+        previous = self.settings.get(quality_key, self.quality_combo.currentData())
+        blocked = self.quality_combo.blockSignals(True)
         self.quality_combo.clear()
         for label, value in entries:
             self.quality_combo.addItem(label, value)
-        # Keep the user's pick when switching modes, if it still exists.
         keep = self.quality_combo.findData(previous)
         if keep != -1:
             self.quality_combo.setCurrentIndex(keep)
+        self.quality_combo.blockSignals(blocked)
 
     def _current_format(self) -> str:
         return "mp3" if "mp3" in self.format_combo.currentText().lower() else "mp4"
@@ -553,24 +585,80 @@ class ConverterWindow(QMainWindow):
             self._save_output_dir()
 
     def _load_output_dir(self) -> None:
-        if output_dir_file.exists():
-            try:
-                stored = output_dir_file.read_text(encoding="utf-8").strip()
-                if stored:
-                    candidate = Path(stored)
-                    if candidate.exists() and candidate.is_dir():
-                        self.output_dir = candidate
-                        logger.info("Loaded stored output directory", extra={"output_dir": stored})
-            except OSError:
-                pass
+        stored = self.settings.get("output_folder", "")
+        if stored:
+            candidate = Path(stored)
+            if candidate.exists() and candidate.is_dir():
+                self.output_dir = candidate
+                logger.info("Loaded stored output directory", extra={"output_dir": stored})
 
     def _save_output_dir(self) -> None:
-        if self.output_dir:
-            try:
-                output_dir_file.write_text(str(self.output_dir), encoding="utf-8")
-                logger.info("Saved output directory", extra={"output_dir": str(self.output_dir)})
-            except OSError as exc:
-                logger.error("Failed to save output directory", extra={"error": str(exc)})
+        self._save_preferences()
+
+    def _on_mode_changed(self) -> None:
+        self._update_url_mode()
+        if "spotify" in self._current_mode() and not self.settings.get("spotify_help_shown"):
+            self.settings["spotify_help_shown"] = True
+            self._save_preferences()
+            self._show_spotify_help()
+            return
+        self._save_preferences()
+
+    def _on_format_changed(self) -> None:
+        self._update_url_mode()
+        self._save_preferences()
+
+    def _show_spotify_help(self) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("Spotify playlist help")
+        box.setText("Spotify playlists need an Exportify CSV.")
+        box.setInformativeText(
+            "1. Open Exportify.\n"
+            "2. Sign in to Spotify and export the playlist as CSV.\n"
+            "3. Return here and choose that CSV.\n"
+            "4. Choose an output folder and download."
+        )
+        box.setStandardButtons(QMessageBox.Close)
+        exportify = box.addButton("Open Exportify", QMessageBox.ActionRole)
+        choose_csv = box.addButton("Choose CSV", QMessageBox.ActionRole)
+        box.setStyleSheet(self._toast_style())
+        box.exec()
+        if box.clickedButton() is exportify:
+            QDesktopServices.openUrl(QUrl("https://exportify.net/"))
+        elif box.clickedButton() is choose_csv:
+            self._choose_csv()
+
+    def _apply_settings(self) -> None:
+        self._applying_settings = True
+        mode = self.settings.get("mode", "yt video")
+        for button in self.mode_group.buttons():
+            if button.text().lower() == mode:
+                button.setChecked(True)
+                break
+        self.format_combo.setCurrentIndex(1 if self.settings.get("format") == "mp4" else 0)
+        self._update_url_mode()
+        self.remember_url_checkbox.setChecked(bool(self.settings.get("remember_url")))
+        if self.remember_url_checkbox.isChecked():
+            self.url_input.setText(self.settings.get("url", ""))
+        self._applying_settings = False
+
+    def _save_preferences(self) -> None:
+        if self._applying_settings:
+            return
+        self.settings["mode"] = self._current_mode()
+        self.settings["format"] = self._current_format()
+        quality_key = "audio_quality" if self.quality_label.text().startswith("Audio") else "video_quality"
+        self.settings[quality_key] = self.quality_combo.currentData()
+        self.settings["output_folder"] = str(self.output_dir) if self.output_dir else ""
+        self.settings["remember_url"] = self.remember_url_checkbox.isChecked()
+        if self.settings["remember_url"]:
+            self.settings["url"] = self.url_input.text()
+        else:
+            self.settings.pop("url", None)
+        try:
+            save_settings(self.settings)
+        except OSError as exc:
+            logger.error("Failed to save preferences", extra={"error": str(exc)})
 
     def _footer(self) -> QVBoxLayout:
         layout = QVBoxLayout()
@@ -596,7 +684,8 @@ class ConverterWindow(QMainWindow):
 
     def _on_convert_clicked(self) -> None:
         if self.worker and self.worker.isRunning():
-            return  # Prevent multiple simultaneous downloads
+            self._cancel_download()
+            return
         
         mode = self._current_mode()
         quality = self.quality_combo.currentData()
@@ -613,6 +702,7 @@ class ConverterWindow(QMainWindow):
             self._start_loading(show_progress=True)
             self.worker = DownloadWorker(mode, "", "mp3", quality, self.output_dir, csv_path=csv_path)
             self.worker.progress.connect(self._on_download_progress)
+            self.worker.status.connect(self._on_download_status)
             self.worker.finished.connect(self._on_download_finished)
             self.worker.start()
             return
@@ -637,6 +727,7 @@ class ConverterWindow(QMainWindow):
             self._start_loading(show_progress=True)
             self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
             self.worker.progress.connect(self._on_download_progress)
+            self.worker.status.connect(self._on_download_status)
             self.worker.finished.connect(self._on_download_finished)
             self.worker.start()
             return
@@ -659,7 +750,7 @@ class ConverterWindow(QMainWindow):
                     return
                 
                 # Show selection dialog
-                dialog = PlaylistSelectionDialog(playlist_title, video_data, self)
+                dialog = PlaylistSelectionDialog(playlist_title, video_data, self, self.output_dir)
                 if dialog.exec() == QDialog.Accepted:
                     selected_videos = dialog.selected_videos
                     if selected_videos:
@@ -667,6 +758,7 @@ class ConverterWindow(QMainWindow):
                         self._start_loading(show_progress=True)
                         self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, selected_videos=selected_videos, playlist_title=playlist_title)
                         self.worker.progress.connect(self._on_download_progress)
+                        self.worker.status.connect(self._on_download_status)
                         self.worker.finished.connect(self._on_download_finished)
                         self.worker.start()
                 else:
@@ -683,27 +775,27 @@ class ConverterWindow(QMainWindow):
             # Create and start worker thread
             self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
             self.worker.progress.connect(self._on_download_progress)
+            self.worker.status.connect(self._on_download_status)
             self.worker.finished.connect(self._on_download_finished)
             self.worker.start()
     
     def _start_loading(self, show_progress: bool = False):
-        """Show spinner in button and disable it."""
-        self.convert_btn.setText("")
-        self.convert_btn.setEnabled(False)
+        """Show cancellation controls while a job runs."""
+        self.convert_btn.setText("Cancel")
+        self.convert_btn.setEnabled(True)
         if show_progress:
             self.progress_bar.setValue(0)
             self.progress_bar.show()
         else:
             self.progress_bar.hide()
-        
-        # Position spinner in the center of the button
-        self.spinner.setParent(self.convert_btn)
-        button_rect = self.convert_btn.rect()
-        spinner_x = (button_rect.width() - self.spinner.width()) // 2
-        spinner_y = (button_rect.height() - self.spinner.height()) // 2
-        self.spinner.move(spinner_x, spinner_y)
-        self.spinner.start()
-    
+        self.spinner.hide()
+
+    def _cancel_download(self):
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.convert_btn.setText("Cancelling…")
+            self.convert_btn.setEnabled(False)
+
     def _stop_loading(self):
         """Stop spinner and restore button."""
         self.spinner.stop()
@@ -715,16 +807,76 @@ class ConverterWindow(QMainWindow):
         self.convert_btn.setEnabled(True)
     
     def _on_download_finished(self, success: bool, message: str, video_name: str):
-        """Handle download completion."""
+        """Handle a structured download outcome."""
         self._stop_loading()
-        self._show_toast(message, success, show_failure_help=not success)
-        
-        if success:
+        result = self.worker.result if self.worker else {}
+        state = result.get("state", "Completed" if success else "Failed")
+        self._show_completion(state, message, result)
+
+        if state == "Completed":
             logger.info("Download completed successfully", extra={"video_name": video_name})
-        # Failures are already logged with full context in downloader.py.
+
+    def _show_completion(self, state, message, result):
+        box = QMessageBox(self)
+        box.setWindowTitle(state)
+        box.setText(message)
+        box.setIcon(QMessageBox.Information if state in {"Completed", "Cancelled"} else QMessageBox.Warning)
+        box.setStandardButtons(QMessageBox.Ok)
+        failed = result.get("failed", [])
+        saved = result.get("saved", [])
+        if failed:
+            preview = ", ".join(failed[:3])
+            more = f" and {len(failed) - 3} more" if len(failed) > 3 else ""
+            box.setInformativeText(f"Saved: {len(saved)}. Issues: {len(failed)} ({preview}{more}).")
+        if failed or state == "Failed":
+            export_btn = box.addButton("Export Log", QMessageBox.ActionRole)
+        else:
+            export_btn = None
+        open_btn = box.addButton("Open Output Folder", QMessageBox.ActionRole) if saved else None
+        retry_btn = box.addButton("Retry Failed Tracks", QMessageBox.ActionRole) if result.get("retry_items") else None
+        box.setStyleSheet(self._toast_style())
+        box.exec()
+        if box.clickedButton() is export_btn:
+            self._export_logs_dialog()
+        elif box.clickedButton() is open_btn:
+            self._open_output_dir()
+        elif box.clickedButton() is retry_btn:
+            self._retry_failed_tracks(result)
+
+    def _retry_failed_tracks(self, result):
+        if not self.worker or not self.output_dir:
+            return
+        previous = self.worker
+        if "playlist" in previous.mode:
+            worker = DownloadWorker(
+                previous.mode, previous.url, previous.fmt, previous.quality,
+                self.output_dir, selected_videos=result["retry_items"],
+                playlist_title=previous.playlist_title,
+            )
+        elif "spotify" in previous.mode:
+            worker = DownloadWorker(
+                previous.mode, previous.url, previous.fmt, previous.quality,
+                self.output_dir, csv_path=previous.csv_path, retry_items=result["retry_items"],
+            )
+        elif "instagram" in previous.mode:
+            worker = DownloadWorker(
+                previous.mode, previous.url, previous.fmt, previous.quality,
+                self.output_dir, retry_items=result["retry_items"],
+            )
+        else:
+            return
+        self._start_loading(show_progress=True)
+        self.worker = worker
+        self.worker.progress.connect(self._on_download_progress)
+        self.worker.status.connect(self._on_download_status)
+        self.worker.finished.connect(self._on_download_finished)
+        self.worker.start()
 
     def _on_download_progress(self, percent: int):
         self.progress_bar.setValue(percent)
+
+    def _on_download_status(self, status: str):
+        self.progress_bar.setFormat(status)
     
     def _show_toast(self, message: str, is_success: bool, show_failure_help: bool = False):
         """Show a toast message to the user."""

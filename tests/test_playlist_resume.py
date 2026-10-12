@@ -74,11 +74,25 @@ class PlaylistResumeTests(unittest.TestCase):
                 )
 
         self.assertEqual(done, ["One.mp3", "Three.mp3"])
-        self.assertEqual(failed, ["Two"])
+        self.assertEqual(failed, [("Two", "bad")])
         self.assertEqual(call.call_count, 3)
         self.assertEqual([c.kwargs["title"] for c in call.call_args_list], ["One", "Two", "Three"])
         self.assertEqual(len(set(archives)), 1)
         self.assertTrue(archives[0].endswith(".smuggyconverter-mp3-320.archive"))
+
+    def test_duplicate_titles_are_not_collapsed(self):
+        calls = []
+
+        def fake_download(url, _fmt, _quality, **kwargs):
+            calls.append((kwargs["title"], url))
+            return f"{url}.mp3"
+
+        with mock.patch.object(downloader, "download_and_convert", side_effect=fake_download):
+            done, failed = downloader.download_selected("Mix", [("Same", "one"), ("Same", "two")], "mp3", 320)
+
+        self.assertEqual(done, ["one.mp3", "two.mp3"])
+        self.assertEqual(failed, [])
+        self.assertEqual(calls, [("Same", "one"), ("Same", "two")])
 
 
 class PlaylistWorkerTests(unittest.TestCase):
@@ -112,6 +126,8 @@ class PlaylistWorkerTests(unittest.TestCase):
         setattr(pyside, "QtCore", qtcore)
         spotify = types.ModuleType("spotify")
         setattr(spotify, "download_spotify_csv", lambda *args, **kwargs: ([], []))
+        setattr(spotify, "read_exportify_csv", lambda *args, **kwargs: [])
+        setattr(spotify, "_track_name", lambda track: track["track"])
         instagram = types.ModuleType("instagram")
         setattr(instagram, "download_instagram", lambda *args, **kwargs: ([], []))
 
@@ -124,9 +140,9 @@ class PlaylistWorkerTests(unittest.TestCase):
             from core import download_worker
 
             cases = [
-                ((["One.mp3"], ["Two"]),
+                ((["One.mp3"], [("Two", "two")]),
                  (False, "1 tracks saved, 1 failed: Two", "Mix")),
-                (([], ["One", "Two"]),
+                (([], [("One", "one"), ("Two", "two")]),
                  (False, "No tracks could be downloaded (2 failed)", "")),
             ]
             for result, expected in cases:
