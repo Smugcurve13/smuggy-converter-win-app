@@ -69,15 +69,18 @@ def download_instagram(url, fmt, quality, target_dir=None, progress_callback=Non
 
     if not entries:
         name = _stamp(fmt)
-        filename = download_and_convert(
-            url, fmt, quality, target_dir=base_dir,
-            progress_callback=progress_callback,
-            status_callback=(
-                lambda stage, name: status_callback(stage, 1, 1, name)
-            ) if status_callback else None,
-            is_cancelled=is_cancelled,
-            title=name,
-        )
+        try:
+            filename = download_and_convert(
+                url, fmt, quality, target_dir=base_dir,
+                progress_callback=progress_callback,
+                status_callback=(
+                    lambda stage, name: status_callback(stage, 1, 1, name)
+                ) if status_callback else None,
+                is_cancelled=is_cancelled,
+                title=name,
+            )
+        except DownloadCancelled:
+            raise DownloadCancelled([], [url])
         logger.info("Instagram post saved", extra={"url": url, "file": filename})
         return [filename], []
 

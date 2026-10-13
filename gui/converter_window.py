@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import platform
 import os
+from urllib.parse import parse_qs, urlsplit
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QIcon, QColor, QDesktopServices
@@ -38,6 +39,37 @@ from config import icon_path, load_settings, save_settings
 from logs import logger, folder as logs_folder, export_log, default_log_path
 from version import __version__
 import updater
+
+
+def _normalise_youtube_single_url(url: str) -> str:
+    """Drop playlist/radio state when the user chose single-video mode."""
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    query = parse_qs(parsed.query)
+    video_id = ""
+    is_youtube = host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com")
+    if host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/", 1)[0]
+    elif host == "youtube.com" or host.endswith(".youtube.com"):
+        video_id = query.get("v", [""])[0]
+        path_parts = [part for part in parsed.path.split("/") if part]
+        if not video_id and len(path_parts) >= 2 and path_parts[0] in {"shorts", "live", "embed"}:
+            video_id = path_parts[1]
+
+    if is_youtube and query.get("start_radio") and not video_id:
+        raise ValueError("Malformed URL: radio links need a video ID.")
+    return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
+
+
+def _is_youtube_playlist_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    return (
+        (host == "youtube.com" or host.endswith(".youtube.com"))
+        and bool(parse_qs(parsed.query).get("list"))
+        and not parse_qs(parsed.query).get("v")
+        and not any(part in {"shorts", "live", "embed"} for part in parsed.path.split("/"))
+    )
 
 
 class ConverterWindow(QMainWindow):
@@ -739,10 +771,20 @@ class ConverterWindow(QMainWindow):
             self.worker.start()
             return
 
-        # Check if playlist URL is entered in single video mode
-        if "playlist?list=" in url and "playlist" not in mode:
-            self._show_toast("Playlist detected: switch modes", False)
-            return
+        if "playlist" not in mode and _is_youtube_playlist_url(url):
+            next(button for button in self.mode_group.buttons() if button.text() == "YT Playlist").setChecked(True)
+            self._update_url_mode()
+            mode = self._current_mode()
+
+        if "playlist" not in mode:
+            try:
+                cleaned_url = _normalise_youtube_single_url(url)
+            except ValueError as exc:
+                self._show_toast(str(exc), False)
+                return
+            if cleaned_url != url:
+                self.url_input.setText(cleaned_url)
+                url = cleaned_url
 
         logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
 

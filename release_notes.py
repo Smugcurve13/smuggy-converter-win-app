@@ -19,6 +19,8 @@ NOTES = {
         "FIXED": [
             "Failed and unfinished batch items no longer prevent completed items from being retained for resume.",
             "Instagram access errors now explain public/private/deleted/sign-in cases clearly.",
+            "Mix/radio YouTube links now resolve to one video in Video mode, while list-only links switch to Playlist mode.",
+            "Getting Started and What's New are separate, larger, readable dialogs.",
         ],
     }
 }

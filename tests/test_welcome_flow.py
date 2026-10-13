@@ -20,17 +20,25 @@ class WelcomeFlowTests(unittest.TestCase):
         text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
 
         self.assertIn("Getting Started", text)
-        self.assertIn("What's New in v1.4.0", text)
+        self.assertNotIn("What's New in v1.4.0", text)
+        self.assertEqual(dialog.heading.text(), "Welcome to SmuggyConverter v1.4.0")
+        self.assertTrue(dialog.heading.wordWrap())
         self.assertIn("Start Using SmuggyConverter", dialog.continue_button.text())
+        self.assertIn("font-size: 18px", dialog.styleSheet())
+        self.assertIn("QScrollArea", dialog.styleSheet())
         dialog.close()
 
     def test_update_dialog_shows_notes_without_repeating_onboarding(self):
         dialog = WelcomeDialog("1.4.0", onboarding=False)
         text = "\n".join(label.text() for label in dialog.findChildren(QLabel))
 
-        self.assertNotIn("Getting Started", text)
+        self.assertNotIn("<b>Getting Started</b>", text)
         self.assertIn("What's New in v1.4.0", text)
+        self.assertEqual(dialog.heading.text(), "What's New in v1.4.0")
+        self.assertTrue(dialog.heading.wordWrap())
         self.assertEqual(dialog.continue_button.text(), "Continue")
+        self.assertIn("font-size: 18px", dialog.styleSheet())
+        self.assertIn("QScrollArea", dialog.styleSheet())
         dialog.close()
 
     def test_startup_marks_onboarding_complete_once_after_acceptance(self):

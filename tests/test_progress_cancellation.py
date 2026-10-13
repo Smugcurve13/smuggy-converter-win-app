@@ -117,6 +117,18 @@ class ProgressCancellationTests(unittest.TestCase):
         self.assertEqual(worker.result["state"], "Failed")
         self.assertEqual(worker.result["retry_items"], skipped)
 
+    def test_worker_keeps_cancelled_single_instagram_url_for_retry(self):
+        import core.download_worker as worker_module
+
+        worker = worker_module.DownloadWorker("instagram", "https://instagram.test/reel", "mp4", 1080, Path("."))
+        with patch.object(
+            worker_module, "download_instagram", side_effect=downloader.DownloadCancelled([], [worker.url])
+        ):
+            worker.run()
+
+        self.assertEqual(worker.result["state"], "Cancelled")
+        self.assertEqual(worker.result["retry_items"], [worker.url])
+
     def test_worker_retries_only_failed_duplicate_spotify_rows(self):
         import core.download_worker as worker_module
 
