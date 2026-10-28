@@ -41,9 +41,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          python -m unittest discover -s tests -v
+          python tests/test_format_selection.py
+          python playlist.py
+          python config.py
+          python updater.py
+          python -m compileall -q .
+
       - name: Build with PyInstaller
         run: |
-          pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets"
+          pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" --icon=assets/icon.ico --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" --add-data "assets/logo.png;assets" --add-data "assets/ref.png;assets" --add-data "LICENSE;." --add-data "THIRD_PARTY_NOTICES.md;." --add-data "licenses;licenses"
 
       - name: Zip artifact
         run: |
@@ -101,6 +112,15 @@ jobs:
           file ffmpeg | grep -q arm64 || { echo "::error::ffmpeg is not arm64"; exit 1; }
           ./ffmpeg -hide_banner -version | head -1
 
+      - name: Run tests
+        run: |
+          QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
+          python tests/test_format_selection.py
+          python playlist.py
+          python config.py
+          python updater.py
+          python -m compileall -q .
+
       - name: Build with PyInstaller
         run: |
           pyinstaller main.py --onedir --windowed --clean --name "SmuggyConverter" \
@@ -108,7 +128,10 @@ jobs:
             --add-binary "assets/ffmpeg/macos/ffmpeg:assets/ffmpeg/macos" \
             --add-binary "assets/ffmpeg/macos/ffprobe:assets/ffmpeg/macos" \
             --add-data "assets/logo.png:assets" \
-            --add-data "assets/ref.png:assets"
+            --add-data "assets/ref.png:assets" \
+            --add-data "LICENSE:." \
+            --add-data "THIRD_PARTY_NOTICES.md:." \
+            --add-data "licenses:licenses"
 
       # Catches a silently-unbundled ffmpeg here rather than after release.
       - name: Verify FFmpeg landed in the bundle
@@ -202,7 +225,7 @@ jobs:
           name: "SmuggyConverter ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-alpha.') }}
           generate_release_notes: false
           body_path: release-notes.md
           files: |

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -44,6 +45,18 @@ class WindowProgressTests(unittest.TestCase):
             window._on_download_status("Downloading 1 of 2 — Track")
             self.assertEqual(window.progress_bar.format(), "Downloading 1 of 2 — Track")
             self.assertEqual(window.version_label.text(), f"v{converter_window.__version__}")
+            window.close()
+
+    def test_analyze_music_opens_with_the_selected_output_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window, "MusicAnalysisDialog") as dialog_class:
+                dialog = dialog_class.return_value
+                window = converter_window.ConverterWindow()
+                window._open_music_analysis()
+
+            dialog_class.assert_called_once_with(Path(tmp), window)
+            dialog.exec.assert_called_once()
             window.close()
 
 

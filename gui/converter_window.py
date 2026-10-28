@@ -31,6 +31,7 @@ from gui.default_output_dialog import DefaultOutputDirDialog
 from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
 from gui.welcome_dialog import WelcomeDialog
+from gui.music_analysis_dialog import MusicAnalysisDialog
 from core.download_worker import DownloadWorker
 from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
@@ -459,6 +460,9 @@ class ConverterWindow(QMainWindow):
         open_output_dir_btn = QPushButton("Open in Folder")
         open_output_dir_btn.setMinimumHeight(42)
         open_output_dir_btn.clicked.connect(self._open_output_dir)
+        analyze_music_btn = QPushButton("Analyze Music")
+        analyze_music_btn.setMinimumHeight(42)
+        analyze_music_btn.clicked.connect(self._open_music_analysis)
         open_logs_btn = QPushButton("Open Logs Folder")
         open_logs_btn.setMinimumHeight(42)
         open_logs_btn.clicked.connect(self._open_logs_folder)
@@ -467,6 +471,7 @@ class ConverterWindow(QMainWindow):
         output_row.addWidget(self.output_path_edit)
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
+        output_row.addWidget(analyze_music_btn)
         output_row.addWidget(open_logs_btn)
 
     # URL input
@@ -599,6 +604,12 @@ class ConverterWindow(QMainWindow):
                 subprocess.Popen(["open", path])
             else:  # Linux and others
                 subprocess.Popen(["xdg-open", path])
+
+    def _open_music_analysis(self) -> None:
+        if not self.output_dir:
+            self._show_toast("Choose an output folder before analyzing music", False)
+            return
+        MusicAnalysisDialog(self.output_dir, self).exec()
 
     def _open_logs_folder(self) -> None:
         path = str(logs_folder)

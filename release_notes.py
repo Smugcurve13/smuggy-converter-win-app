@@ -4,6 +4,15 @@ import argparse
 
 
 NOTES = {
+    "1.5.0-alpha.1": {
+        "NEW": [
+            "Analyze Music scans a local folder for BPM, musical key, and Camelot key, then exports the results as CSV.",
+        ],
+        "CHANGED": [],
+        "FIXED": [
+            "SmuggyConverter no longer adds a macOS menu-bar icon.",
+        ],
+    },
     "1.4.0": {
         "NEW": [
             "First-launch onboarding and an in-app What's New dialog.",

@@ -18,6 +18,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 - **MP3 files are properly tagged** — title, artist, album, year and embedded cover art.
 - **MP4 up to 4K** — 2160p, 1440p, 1080p, 720p, 480p. Files are remuxed rather than
   re-encoded, so a download finishes in seconds instead of minutes.
+- **Analyze local music** — choose any folder to estimate BPM, musical key, and Camelot key, then export a CSV. It never renames, moves, or modifies files.
 - **FFmpeg is bundled** on Windows and macOS releases; nothing to install.
 - **Updates itself** — checks GitHub on launch and, if you say yes, downloads and
   installs the new version in place, then restarts. Nothing to re-download by hand.
@@ -52,6 +53,10 @@ right-click the app → **Open**, or run
 2. Set the output folder (asked once on first run, changeable any time).
 3. Paste a URL — or for Spotify, browse to your Exportify CSV.
 4. Choose format and quality, then **Convert and Download**.
+
+### Analyze Music
+
+Click **Analyze Music** beside the output folder, or choose another local folder. The app estimates BPM, musical key, and Camelot key for supported audio files and can export a CSV for review. These are estimates, so validate tracks you plan to use in a DJ set. The tool does not rename, move, tag, or upload files.
 
 ### Spotify mode
 
@@ -195,6 +200,10 @@ sites change constantly.
 | `updater.py` | Release polling, download and the on-restart app swap |
 | `gui/` | PySide6 window and dialogs |
 | `core/` | Background download and update workers |
+
+## Licence
+
+SmuggyConverter is free software licensed under the [GNU Affero General Public License v3.0 or later](LICENSE). Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Author
 
