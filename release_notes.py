@@ -4,6 +4,20 @@ import argparse
 
 
 NOTES = {
+    "1.5.0": {
+        "NEW": [
+            "Analyze Music scans a local folder for estimated BPM, musical key, and Camelot key, then exports the results as CSV.",
+            "MP4 downloads can now be center-cropped to Square, Portrait, or Reel dimensions.",
+        ],
+        "CHANGED": [
+            "The app now keeps one easy-to-open smuggyconverter.log file; legacy text logs are consolidated once and removed.",
+            "Open Logs Folder is now Open Log and opens the current log file directly.",
+        ],
+        "FIXED": [
+            "Playlist completion now names the playlist and reports tracks already downloaded instead of calling a fully skipped repeat successful.",
+            "A playlist already downloaded with the same folder, format, and quality now warns before track selection.",
+        ],
+    },
     "1.5.0-alpha.1": {
         "NEW": [
             "Analyze Music scans a local folder for BPM, musical key, and Camelot key, then exports the results as CSV.",

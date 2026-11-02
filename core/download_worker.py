@@ -14,7 +14,7 @@ class DownloadWorker(QThread):
     progress = Signal(int)
     status = Signal(str)
 
-    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path, selected_videos: list | None = None, playlist_title: str | None = None, csv_path: str | None = None, retry_items: list | None = None):
+    def __init__(self, mode: str, url: str, fmt: str, quality: int | None, output_dir: Path, selected_videos: list | None = None, playlist_title: str | None = None, csv_path: str | None = None, retry_items: list | None = None, crop: str = "Original"):
         super().__init__()
         self.mode = mode
         self.url = url
@@ -25,6 +25,7 @@ class DownloadWorker(QThread):
         self.playlist_title = playlist_title or "playlist"
         self.csv_path = csv_path
         self.retry_items = retry_items or []
+        self.crop = crop
         self.result = {}
         self._cancel_requested = False
 
@@ -84,6 +85,7 @@ class DownloadWorker(QThread):
                     status_callback=self._status,
                     is_cancelled=self.is_cancelled,
                     retry_items=self.retry_items,
+                    crop=self.crop,
                 )
                 if self.is_cancelled():
                     raise DownloadCancelled(done)
@@ -94,7 +96,7 @@ class DownloadWorker(QThread):
                 self._finish(state, msg, done[0], done, skipped, skipped)
             elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
-                done, failed = download_selected(
+                playlist_result = download_selected(
                     self.playlist_title,
                     videos_dict,
                     self.fmt,
@@ -103,16 +105,27 @@ class DownloadWorker(QThread):
                     progress_callback=self.progress.emit,
                     status_callback=self._status,
                     is_cancelled=self.is_cancelled,
+                    crop=self.crop,
                 )
+                done, failed, *skipped_result = playlist_result
+                skipped = skipped_result[0] if skipped_result else []
                 if self.is_cancelled():
                     raise DownloadCancelled(done)
                 failed_items = [video for video in self.selected_videos if video[0] in {url for _, url in failed}]
                 failed = [title for title, _ in failed]
                 retry_items = failed_items
-                if not done:
-                    self._finish("Failed", f"No tracks could be downloaded ({len(failed)} failed)", "", [], failed, retry_items)
+                if not done and not failed:
+                    self._finish(
+                        "Completed", f"{self.playlist_title} — {len(skipped)} already downloaded",
+                        self.playlist_title, [], [], [],
+                    )
                     return
-                msg = f"{len(done)} tracks saved"
+                if not done:
+                    self._finish("Failed", f"{self.playlist_title} — no tracks could be downloaded ({len(failed)} failed)", self.playlist_title, [], failed, retry_items)
+                    return
+                msg = f"{self.playlist_title} — {len(done)} tracks saved"
+                if skipped:
+                    msg += f", {len(skipped)} already downloaded"
                 if failed:
                     msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
                     if len(failed) > 3:
@@ -128,6 +141,7 @@ class DownloadWorker(QThread):
                     progress_callback=self.progress.emit,
                     status_callback=lambda stage, name: self._status(stage, 1, 1, name),
                     is_cancelled=self.is_cancelled,
+                    crop=self.crop,
                 )
                 if self.is_cancelled():
                     raise DownloadCancelled([filename])

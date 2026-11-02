@@ -8,8 +8,6 @@ import sys
 import platform
 
 from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
-
 from config import FFMPEG_PATH, FFPROBE_PATH
 from version import __version__
 
@@ -27,24 +25,38 @@ folder = f"{home_folder}/{FOLDERNAME}"
 if not os.path.exists(folder):
     os.makedirs(folder, exist_ok=True)
 
-# Static base name: the handler appends the date on rollover. Putting the date in
-# the base name too produced smuggyconverter_logs_2026-07-31.txt.2026-08-01.txt and
-# stopped backupCount from ever pruning.
+# One current log is easier to find and attach than date-suffixed text exports.
 file = pathlib.Path(f"{folder}/smuggyconverter.log")
+
+
+def migrate_legacy_text_logs(log_folder: pathlib.Path | str, current_log: pathlib.Path | str) -> list[pathlib.Path]:
+    """Append the newest five legacy text logs once, then remove merged files."""
+    log_folder = pathlib.Path(log_folder)
+    current_log = pathlib.Path(current_log)
+    legacy = sorted(log_folder.glob("smuggyconverter*.txt"), key=lambda path: path.stat().st_mtime)
+    newest = legacy[-5:]
+    merged = []
+    if newest:
+        with current_log.open("a", encoding="utf-8") as destination:
+            for path in newest:
+                try:
+                    destination.write(path.read_text(encoding="utf-8", errors="replace"))
+                    merged.append(path)
+                except OSError:
+                    continue
+    for path in legacy:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    return merged
+
+
+migrate_legacy_text_logs(folder, file)
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
-
-# TimedRotatingFileHandler rotates at midnight, creating a new file each day.
-# The base file always represents today; backups get a date suffix appended.
-file_handler = TimedRotatingFileHandler(
-    file,
-    when="midnight",
-    interval=1,
-    backupCount=30,
-    encoding="utf-8",
-)
-file_handler.suffix = "%Y-%m-%d.txt"
+file_handler = logging.FileHandler(file, encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 
 # logging only renders `extra` fields a format string names, so every

@@ -17,7 +17,15 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("Mix/radio", rendered)
         self.assertIn("Getting Started and What's New", rendered)
 
-    def test_alpha_notes_include_music_analysis_and_macos_menu_bar_fix(self):
+    def test_v150_notes_include_bpm_playlist_and_log_changes(self):
+        notes = release_notes.get_notes("1.5.0")
+
+        self.assertTrue(any("BPM" in entry for entry in notes["NEW"]))
+        self.assertTrue(any("crop" in entry.lower() for entry in notes["NEW"]))
+        self.assertTrue(any("already downloaded" in entry.lower() for entry in notes["FIXED"]))
+        self.assertTrue(any("log" in entry.lower() for entry in notes["CHANGED"]))
+
+
         rendered = release_notes.render_markdown("1.5.0-alpha.1")
 
         self.assertIn("Analyze Music", rendered)

@@ -149,14 +149,15 @@ without publishing anything.
 
 ## Logs
 
-Written to `~/.SmuggyConverter/logs/smuggyconverter.log`, rotated daily, 30 days
-kept. On Windows that's `C:\Users\<you>\.SmuggyConverter\logs\`.
+Written to one current file: `~/.SmuggyConverter/logs/smuggyconverter.log`.
+On Windows that's `C:\Users\<you>\.SmuggyConverter\logs\`.
 
-The **Open Logs Folder** button takes you there; **Export Logs** (offered on any
-download failure, including partial playlist failures) saves the current log for
-sharing. Each run records the app version, yt-dlp version,
-Python version and resolved FFmpeg path, which is usually enough to identify a
-problem without any back and forth.
+The **Open Log** button opens that file directly; **Export Log** (offered on any
+download failure, including partial playlist failures) copies the current log for
+sharing. The latest five legacy converter text logs are consolidated once into the
+current log; all legacy converter text logs are then removed. Each run records the app version, yt-dlp version, Python version and
+resolved FFmpeg path, which is usually enough to identify a problem without any
+back and forth.
 
 ## Troubleshooting
 

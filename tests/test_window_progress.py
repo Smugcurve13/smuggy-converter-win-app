@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
@@ -57,6 +57,37 @@ class WindowProgressTests(unittest.TestCase):
 
             dialog_class.assert_called_once_with(Path(tmp), window)
             dialog.exec.assert_called_once()
+            window.close()
+
+    def test_video_crop_is_visible_for_mp4_and_log_button_opens_current_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window.subprocess, "Popen") as popen:
+                window = converter_window.ConverterWindow()
+                window.format_combo.setCurrentIndex(1)
+
+                self.assertFalse(window.crop_label.isHidden())
+                self.assertFalse(window.crop_combo.isHidden())
+                self.assertEqual(window.open_log_btn.text(), "Open Log")
+                window._open_log()
+
+            popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
+            window.close()
+    def test_instagram_retry_preserves_the_selected_crop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window, "DownloadWorker") as worker_class:
+                next_worker = MagicMock()
+                worker_class.return_value = next_worker
+                window = converter_window.ConverterWindow()
+                window.worker = MagicMock(
+                    mode="instagram", url="https://instagram.test/reel", fmt="mp4", quality=1080,
+                    crop="9:16 (Reel)", csv_path=None, playlist_title=None,
+                )
+
+                window._retry_failed_tracks({"retry_items": ["https://instagram.test/reel"]})
+
+            self.assertEqual(worker_class.call_args.kwargs["crop"], "9:16 (Reel)")
             window.close()
 
 

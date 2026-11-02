@@ -68,31 +68,55 @@ class PlaylistResumeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as target:
             with mock.patch.object(downloader, "download_and_convert", side_effect=fake_download) as call:
-                done, failed = downloader.download_selected(
+                done, failed, skipped = downloader.download_selected(
                     "Mix", {"One": "one", "Two": "bad", "Three": "three"},
                     "mp3", 320, target_dir=target,
                 )
 
         self.assertEqual(done, ["One.mp3", "Three.mp3"])
         self.assertEqual(failed, [("Two", "bad")])
+        self.assertEqual(skipped, [])
         self.assertEqual(call.call_count, 3)
         self.assertEqual([c.kwargs["title"] for c in call.call_args_list], ["One", "Two", "Three"])
         self.assertEqual(len(set(archives)), 1)
         self.assertTrue(archives[0].endswith(".smuggyconverter-mp3-320.archive"))
 
-    def test_duplicate_titles_are_not_collapsed(self):
+    def test_duplicate_titles_are_given_distinct_output_names(self):
         calls = []
 
         def fake_download(url, _fmt, _quality, **kwargs):
             calls.append((kwargs["title"], url))
-            return f"{url}.mp3"
+            return f"{kwargs['title']}.mp3"
 
         with mock.patch.object(downloader, "download_and_convert", side_effect=fake_download):
-            done, failed = downloader.download_selected("Mix", [("Same", "one"), ("Same", "two")], "mp3", 320)
+            done, failed, skipped = downloader.download_selected("Mix", [("Same", "one"), ("Same", "two")], "mp3", 320)
 
-        self.assertEqual(done, ["one.mp3", "two.mp3"])
+        self.assertEqual(done, ["Same.mp3", "Same (2).mp3"])
         self.assertEqual(failed, [])
-        self.assertEqual(calls, [("Same", "one"), ("Same", "two")])
+        self.assertEqual(skipped, [])
+        self.assertEqual(calls, [("Same", "one"), ("Same (2)", "two")])
+    def test_archived_duplicate_reserves_its_output_name(self):
+        calls = []
+
+        def fake_download(url, _fmt, _quality, **kwargs):
+            calls.append((kwargs["title"], url))
+            return f"{kwargs['title']}.mp3"
+
+        with tempfile.TemporaryDirectory() as target:
+            archive = downloader.playlist_archive_path(target, "Mix", "mp3", 320)
+            archive.parent.mkdir()
+            archive.write_text("youtube archived\n", encoding="utf-8")
+            with mock.patch.object(downloader, "download_and_convert", side_effect=fake_download):
+                done, failed, skipped = downloader.download_selected(
+                    "Mix",
+                    [("Same", "https://www.youtube.com/watch?v=archived"), ("Same", "https://www.youtube.com/watch?v=new")],
+                    "mp3", 320, target_dir=target,
+                )
+
+        self.assertEqual(done, ["Same (2).mp3"])
+        self.assertEqual(failed, [])
+        self.assertEqual(skipped, ["Same"])
+        self.assertEqual(calls, [("Same (2)", "https://www.youtube.com/watch?v=new")])
 
 
 class PlaylistWorkerTests(unittest.TestCase):
@@ -140,10 +164,10 @@ class PlaylistWorkerTests(unittest.TestCase):
             from core import download_worker
 
             cases = [
-                ((["One.mp3"], [("Two", "two")]),
-                 (False, "1 tracks saved, 1 failed: Two", "Mix")),
-                (([], [("One", "one"), ("Two", "two")]),
-                 (False, "No tracks could be downloaded (2 failed)", "")),
+                ((["One.mp3"], [("Two", "two")], []),
+                 (False, "Mix — 1 tracks saved, 1 failed: Two", "Mix")),
+                (([], [("One", "one"), ("Two", "two")], []),
+                 (False, "Mix — no tracks could be downloaded (2 failed)", "Mix")),
             ]
             for result, expected in cases:
                 worker = download_worker.DownloadWorker(
