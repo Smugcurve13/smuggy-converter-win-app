@@ -31,12 +31,15 @@ from gui.default_output_dialog import DefaultOutputDirDialog
 from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
 from gui.welcome_dialog import WelcomeDialog
+from gui.music_analysis_dialog import MusicAnalysisDialog
 from core.download_worker import DownloadWorker
 from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
 from playlist import extract_playlist_info
+from downloader import has_playlist_archive
 from config import icon_path, load_settings, save_settings
-from logs import logger, folder as logs_folder, export_log, default_log_path
+from logs import logger, file as current_log_path, export_log, default_log_path
+from video_crop import CROP_OPTIONS
 from version import __version__
 import updater
 
@@ -110,6 +113,9 @@ class ConverterWindow(QMainWindow):
         # Unconditional: Spotify used to skip this, which left video resolutions
         # sitting under the "Audio Quality:" label.
         self._update_quality_options()
+        crop_visible = not spotify and self._current_format() == "mp4"
+        self.crop_label.setVisible(crop_visible)
+        self.crop_combo.setVisible(crop_visible)
 
     def __init__(self) -> None:
         super().__init__()
@@ -459,15 +465,20 @@ class ConverterWindow(QMainWindow):
         open_output_dir_btn = QPushButton("Open in Folder")
         open_output_dir_btn.setMinimumHeight(42)
         open_output_dir_btn.clicked.connect(self._open_output_dir)
-        open_logs_btn = QPushButton("Open Logs Folder")
-        open_logs_btn.setMinimumHeight(42)
-        open_logs_btn.clicked.connect(self._open_logs_folder)
+        analyze_music_btn = QPushButton("Analyze Music")
+        analyze_music_btn.setMinimumHeight(42)
+        analyze_music_btn.clicked.connect(self._open_music_analysis)
+        open_log_btn = QPushButton("Open Log")
+        open_log_btn.setMinimumHeight(42)
+        open_log_btn.clicked.connect(self._open_log)
+        self.open_log_btn = open_log_btn
         output_row = QHBoxLayout()
         output_row.setSpacing(8)
         output_row.addWidget(self.output_path_edit)
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
-        output_row.addWidget(open_logs_btn)
+        output_row.addWidget(analyze_music_btn)
+        output_row.addWidget(open_log_btn)
 
     # URL input
         self.url_label = QLabel("YouTube Video URL:")
@@ -512,6 +523,13 @@ class ConverterWindow(QMainWindow):
         self.quality_combo.setMinimumHeight(42)
         self.quality_combo.currentIndexChanged.connect(self._save_preferences)
 
+    # Crop (MP4 only)
+        self.crop_label = QLabel("Video Crop:")
+        self.crop_combo = QComboBox()
+        self.crop_combo.addItems(CROP_OPTIONS)
+        self.crop_combo.setMinimumHeight(42)
+        self.crop_combo.currentTextChanged.connect(self._save_preferences)
+
     # Build form layout
         form_grid.addWidget(output_label)
         form_grid.addLayout(output_row)
@@ -525,6 +543,8 @@ class ConverterWindow(QMainWindow):
         form_grid.addWidget(self.format_combo)
         form_grid.addWidget(self.quality_label)
         form_grid.addWidget(self.quality_combo)
+        form_grid.addWidget(self.crop_label)
+        form_grid.addWidget(self.crop_combo)
 
         card_layout.addLayout(form_grid)
     # Sync labels with current mode / format (important)
@@ -600,8 +620,14 @@ class ConverterWindow(QMainWindow):
             else:  # Linux and others
                 subprocess.Popen(["xdg-open", path])
 
-    def _open_logs_folder(self) -> None:
-        path = str(logs_folder)
+    def _open_music_analysis(self) -> None:
+        if not self.output_dir:
+            self._show_toast("Choose an output folder before analyzing music", False)
+            return
+        MusicAnalysisDialog(self.output_dir, self).exec()
+
+    def _open_log(self) -> None:
+        path = str(current_log_path)
         if platform.system() == "Windows":
             os.startfile(path)
         elif platform.system() == "Darwin":
@@ -669,6 +695,9 @@ class ConverterWindow(QMainWindow):
                 button.setChecked(True)
                 break
         self.format_combo.setCurrentIndex(1 if self.settings.get("format") == "mp4" else 0)
+        saved_crop = self.settings.get("video_crop", "Original")
+        crop_index = self.crop_combo.findText(saved_crop)
+        self.crop_combo.setCurrentIndex(crop_index if crop_index >= 0 else 0)
         self._update_url_mode()
         self.remember_url_checkbox.setChecked(bool(self.settings.get("remember_url")))
         if self.remember_url_checkbox.isChecked():
@@ -682,6 +711,7 @@ class ConverterWindow(QMainWindow):
         self.settings["format"] = self._current_format()
         quality_key = "audio_quality" if self.quality_label.text().startswith("Audio") else "video_quality"
         self.settings[quality_key] = self.quality_combo.currentData()
+        self.settings["video_crop"] = self.crop_combo.currentText()
         self.settings["output_folder"] = str(self.output_dir) if self.output_dir else ""
         self.settings["remember_url"] = self.remember_url_checkbox.isChecked()
         if self.settings["remember_url"]:
@@ -728,6 +758,7 @@ class ConverterWindow(QMainWindow):
         
         mode = self._current_mode()
         quality = self.quality_combo.currentData()
+        crop = self.crop_combo.currentText()
 
         if "spotify" in mode:
             csv_path = self.csv_input.text().strip()
@@ -764,7 +795,7 @@ class ConverterWindow(QMainWindow):
                 return
             logger.info("Convert clicked", extra={"mode": mode, "url": url, "fmt": fmt, "quality": quality})
             self._start_loading(show_progress=True)
-            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, crop=crop)
             self.worker.progress.connect(self._on_download_progress)
             self.worker.status.connect(self._on_download_status)
             self.worker.finished.connect(self._on_download_finished)
@@ -797,6 +828,22 @@ class ConverterWindow(QMainWindow):
                 if not video_data:
                     self._show_toast("Failed to extract playlist information", False)
                     return
+
+                if has_playlist_archive(self.output_dir, playlist_title, fmt, quality):
+                    existing = QMessageBox(self)
+                    existing.setWindowTitle("Playlist downloaded before")
+                    existing.setText(f"{playlist_title} already has downloads in this folder.")
+                    existing.setInformativeText(
+                        "Previously completed tracks will be skipped. You can still select tracks "
+                        "to download anything new or unfinished."
+                    )
+                    existing.setIcon(QMessageBox.Information)
+                    existing.setStandardButtons(QMessageBox.Cancel)
+                    continue_btn = existing.addButton("Choose Tracks", QMessageBox.AcceptRole)
+                    existing.setStyleSheet(self._toast_style())
+                    existing.exec()
+                    if existing.clickedButton() is not continue_btn:
+                        return
                 
                 # Show selection dialog
                 dialog = PlaylistSelectionDialog(playlist_title, video_data, self, self.output_dir)
@@ -805,7 +852,7 @@ class ConverterWindow(QMainWindow):
                     if selected_videos:
                         logger.info(f"User selected {len(selected_videos)} videos from playlist")
                         self._start_loading(show_progress=True)
-                        self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, selected_videos=selected_videos, playlist_title=playlist_title)
+                        self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, selected_videos=selected_videos, playlist_title=playlist_title, crop=crop)
                         self.worker.progress.connect(self._on_download_progress)
                         self.worker.status.connect(self._on_download_status)
                         self.worker.finished.connect(self._on_download_finished)
@@ -822,7 +869,7 @@ class ConverterWindow(QMainWindow):
             self._start_loading(show_progress=True)
 
             # Create and start worker thread
-            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir)
+            self.worker = DownloadWorker(mode, url, fmt, quality, self.output_dir, crop=crop)
             self.worker.progress.connect(self._on_download_progress)
             self.worker.status.connect(self._on_download_status)
             self.worker.finished.connect(self._on_download_finished)
@@ -901,6 +948,7 @@ class ConverterWindow(QMainWindow):
                 previous.mode, previous.url, previous.fmt, previous.quality,
                 self.output_dir, selected_videos=result["retry_items"],
                 playlist_title=previous.playlist_title,
+                crop=previous.crop,
             )
         elif "spotify" in previous.mode:
             worker = DownloadWorker(
@@ -910,7 +958,7 @@ class ConverterWindow(QMainWindow):
         elif "instagram" in previous.mode:
             worker = DownloadWorker(
                 previous.mode, previous.url, previous.fmt, previous.quality,
-                self.output_dir, retry_items=result["retry_items"],
+                self.output_dir, retry_items=result["retry_items"], crop=previous.crop,
             )
         else:
             return

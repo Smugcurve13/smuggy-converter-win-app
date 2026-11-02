@@ -1,7 +1,8 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
@@ -44,6 +45,49 @@ class WindowProgressTests(unittest.TestCase):
             window._on_download_status("Downloading 1 of 2 — Track")
             self.assertEqual(window.progress_bar.format(), "Downloading 1 of 2 — Track")
             self.assertEqual(window.version_label.text(), f"v{converter_window.__version__}")
+            window.close()
+
+    def test_analyze_music_opens_with_the_selected_output_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window, "MusicAnalysisDialog") as dialog_class:
+                dialog = dialog_class.return_value
+                window = converter_window.ConverterWindow()
+                window._open_music_analysis()
+
+            dialog_class.assert_called_once_with(Path(tmp), window)
+            dialog.exec.assert_called_once()
+            window.close()
+
+    def test_video_crop_is_visible_for_mp4_and_log_button_opens_current_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window.subprocess, "Popen") as popen:
+                window = converter_window.ConverterWindow()
+                window.format_combo.setCurrentIndex(1)
+
+                self.assertFalse(window.crop_label.isHidden())
+                self.assertFalse(window.crop_combo.isHidden())
+                self.assertEqual(window.open_log_btn.text(), "Open Log")
+                window._open_log()
+
+            popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
+            window.close()
+    def test_instagram_retry_preserves_the_selected_crop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window, "DownloadWorker") as worker_class:
+                next_worker = MagicMock()
+                worker_class.return_value = next_worker
+                window = converter_window.ConverterWindow()
+                window.worker = MagicMock(
+                    mode="instagram", url="https://instagram.test/reel", fmt="mp4", quality=1080,
+                    crop="9:16 (Reel)", csv_path=None, playlist_title=None,
+                )
+
+                window._retry_failed_tracks({"retry_items": ["https://instagram.test/reel"]})
+
+            self.assertEqual(worker_class.call_args.kwargs["crop"], "9:16 (Reel)")
             window.close()
 
 

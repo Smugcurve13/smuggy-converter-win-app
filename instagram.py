@@ -39,7 +39,7 @@ def _stamp(fmt, index=None):
 
 
 def download_instagram(url, fmt, quality, target_dir=None, progress_callback=None,
-                       status_callback=None, is_cancelled=None, retry_items=None):
+                       status_callback=None, is_cancelled=None, retry_items=None, crop="Original"):
     """Download one Instagram post. Returns (filenames, [skipped descriptions]).
 
     A carousel post holds several items; each video lands in a subfolder named
@@ -78,6 +78,7 @@ def download_instagram(url, fmt, quality, target_dir=None, progress_callback=Non
                 ) if status_callback else None,
                 is_cancelled=is_cancelled,
                 title=name,
+                crop=crop,
             )
         except DownloadCancelled:
             raise DownloadCancelled([], [url])
@@ -104,6 +105,7 @@ def download_instagram(url, fmt, quality, target_dir=None, progress_callback=Non
                     lambda stage, name, item=idx: status_callback(stage, item, total, name)
                 ) if status_callback else None,
                 is_cancelled=is_cancelled,
+                crop=crop,
             )
             done.append(filename)
         except DownloadCancelled:

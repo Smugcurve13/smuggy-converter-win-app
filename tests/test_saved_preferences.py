@@ -47,6 +47,7 @@ class SettingsTests(unittest.TestCase):
             "format": "mp4",
             "audio_quality": 256,
             "video_quality": 1080,
+            "video_crop": "9:16 (Reel)",
             "output_folder": "/chosen/output",
             "remember_url": True,
             "url": "https://www.instagram.com/reel/example/",

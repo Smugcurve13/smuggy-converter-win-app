@@ -1,10 +1,14 @@
 import os
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import yt_dlp
+from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
 
 from config import FFMPEG_DIR
 from file_utils import sanitize_filename, MEDIA_DIR
 from logs import logger
+from video_crop import crop_filter
 
 
 class DownloadCancelled(Exception):
@@ -19,6 +23,49 @@ class DownloadFailed(Exception):
         super().__init__(message)
         self.failed = list(failed)
         self.retry_items = list(retry_items)
+
+
+class CenterCropPostProcessor(FFmpegPostProcessor):
+    """Apply one centered crop after yt-dlp has produced the MP4."""
+
+    def __init__(self, downloader=None, crop="Original"):
+        super().__init__(downloader)
+        self.filter = crop_filter(crop)
+
+    def run(self, information):
+        if not self.filter:
+            return [], information
+        source = Path(information["filepath"])
+        temporary = source.with_name(f"{source.stem}.smuggy-crop{source.suffix}")
+        self.run_ffmpeg(str(source), str(temporary), ["-vf", self.filter, "-c:a", "copy"])
+        temporary.replace(source)
+        return [], information
+
+
+def playlist_archive_path(target_dir, playlist_title, fmt, quality) -> Path:
+    playlist_dir = Path(target_dir) / (sanitize_filename(playlist_title) or "playlist")
+    return playlist_dir / f".smuggyconverter-{fmt}-{quality or 'best'}.archive"
+
+
+def has_playlist_archive(target_dir, playlist_title, fmt, quality) -> bool:
+    return playlist_archive_path(target_dir, playlist_title, fmt, quality).is_file()
+
+
+def _youtube_video_id(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.hostname == "youtu.be":
+        return parsed.path.strip("/").split("/", 1)[0]
+    return parse_qs(parsed.query).get("v", [""])[0]
+
+
+def _archive_contains_url(archive: Path, url: str) -> bool:
+    video_id = _youtube_video_id(url)
+    if not video_id or not archive.is_file():
+        return False
+    try:
+        return any(line.rstrip().endswith(f" {video_id}") for line in archive.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        return False
 
 
 def _progress_hook(callback=None, is_cancelled=None):
@@ -130,7 +177,7 @@ def _format_opts(fmt, quality, source_metadata=True):
 
 def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, status_callback=None,
                          is_cancelled=None, title=None, source_metadata=True, throttle=False,
-                         download_archive=None):
+                         download_archive=None, crop="Original"):
     """Download one URL and produce a single {title}.{fmt} file. The only downloader.
 
     `url` may be any yt-dlp input, including a search like "ytsearch1:some query".
@@ -170,8 +217,13 @@ def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=N
         opts["outtmpl"] = os.path.join(base_dir, f"{safe_title}.%(ext)s")
 
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.extract_info(url, download=True)
+            if fmt == "mp4" and crop != "Original":
+                ydl.add_post_processor(CenterCropPostProcessor(ydl, crop))
+            downloaded = ydl.extract_info(url, download=True)
 
+        if downloaded is None:
+            logger.info("Download skipped because it is already in the archive", extra={"url": url})
+            return None
         logger.info("Conversion complete", extra={"path": os.path.join(base_dir, filename)})
         return filename
     except DownloadCancelled:
@@ -182,36 +234,48 @@ def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=N
 
 
 def download_selected(playlist_title, videos_dict, fmt, quality, target_dir=None,
-                      progress_callback=None, status_callback=None, is_cancelled=None):
-    """Download the picked videos into a playlist subfolder. Progress ticks per video."""
+                      progress_callback=None, status_callback=None, is_cancelled=None, crop="Original"):
+    """Download the picked videos into a playlist subfolder and report prior downloads."""
     base_dir = target_dir if target_dir else MEDIA_DIR
-    playlist_dir = os.path.join(base_dir, sanitize_filename(playlist_title))
+    archive = playlist_archive_path(base_dir, playlist_title, fmt, quality)
+    playlist_dir = archive.parent
     os.makedirs(playlist_dir, exist_ok=True)
 
-    done, failed = [], []
+    done, failed, skipped = [], [], []
+    used_titles = {}
     items = list(videos_dict.items()) if isinstance(videos_dict, dict) else list(videos_dict)
     total = len(items)
-    archive = os.path.join(playlist_dir, f".smuggyconverter-{fmt}-{quality or 'best'}.archive")
     for idx, (title, url) in enumerate(items, start=1):
         if is_cancelled and is_cancelled():
             raise DownloadCancelled(done, failed + items[idx - 1:])
-        try:
-            done.append(download_and_convert(
-                url, fmt, quality, target_dir=playlist_dir, title=title, throttle=True,
-                progress_callback=progress_callback,
-                status_callback=(
-                    lambda stage, name, item=idx: status_callback(stage, item, total, name)
-                ) if status_callback else None,
-                is_cancelled=is_cancelled,
-                download_archive=archive,
-            ))
-        except DownloadCancelled:
-            raise DownloadCancelled(done, failed + items[idx - 1:])
-        except Exception as e:
-            logger.error("Playlist item failed", extra={"title": title, "url": url, "error": str(e)})
-            failed.append((title, url))
+        title_key = (sanitize_filename(title) or "download").casefold()
+        used_titles[title_key] = used_titles.get(title_key, 0) + 1
+        output_title = title if used_titles[title_key] == 1 else f"{title} ({used_titles[title_key]})"
+        if _archive_contains_url(archive, url):
+            skipped.append(title)
+        else:
+            try:
+                saved = download_and_convert(
+                    url, fmt, quality, target_dir=playlist_dir, title=output_title, throttle=True,
+                    progress_callback=progress_callback,
+                    status_callback=(
+                        lambda stage, name, item=idx: status_callback(stage, item, total, name)
+                    ) if status_callback else None,
+                    is_cancelled=is_cancelled,
+                    download_archive=str(archive),
+                    crop=crop,
+                )
+                if saved:
+                    done.append(saved)
+                else:
+                    skipped.append(title)
+            except DownloadCancelled:
+                raise DownloadCancelled(done, failed + items[idx - 1:])
+            except Exception as e:
+                logger.error("Playlist item failed", extra={"title": title, "url": url, "error": str(e)})
+                failed.append((title, url))
         if progress_callback:
             progress_callback(int(idx / total * 100) if total else 100)
     logger.info("Playlist complete", extra={"playlist": playlist_title,
-                                            "downloaded": len(done), "failed": len(failed)})
-    return done, failed
+                                            "downloaded": len(done), "skipped": len(skipped), "failed": len(failed)})
+    return done, failed, skipped

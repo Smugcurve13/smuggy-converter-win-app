@@ -3,11 +3,7 @@ import platform
 import sys
 
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (
-    QApplication,
-    QMessageBox,
-    QSystemTrayIcon,
-)
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui.converter_window import ConverterWindow
 from config import icon_path, FFMPEG_AVAILABLE, FFMPEG_PATH
@@ -47,8 +43,6 @@ def main() -> None:
     _require_ffmpeg()
     window = ConverterWindow()
     window.showMaximized()
-    tray_icon = QSystemTrayIcon(QIcon(str(icon_path)), parent=None)
-    tray_icon.show()
     app.exec()
 
 
