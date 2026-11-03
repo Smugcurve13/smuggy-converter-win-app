@@ -175,28 +175,30 @@ class ConverterWindow(QMainWindow):
 
     def _on_update_available(self, info: dict) -> None:
         size_mb = info.get("size", 0) / 1_000_000
-        box = QMessageBox(self)
-        box.setWindowTitle("Update Available")
-        box.setText(f"SmuggyConverter {info['version']} is available.")
-        box.setInformativeText(
-            f"You are on v{__version__}. The download is about {size_mb:.0f} MB.\n"
-            "SmuggyConverter will restart to finish installing."
-        )
-        box.setIcon(QMessageBox.Information)
-        box.setStandardButtons(QMessageBox.NoButton)
-        update_btn = box.addButton("Update Now", QMessageBox.AcceptRole)
-        notes_btn = box.addButton("What's New", QMessageBox.ActionRole)
-        box.addButton("Later", QMessageBox.RejectRole)
-        box.setStyleSheet(self._toast_style())
-        box.exec()
+        while True:
+            box = QMessageBox(self)
+            box.setWindowTitle("Update Available")
+            box.setText(f"SmuggyConverter {info['version']} is available.")
+            box.setInformativeText(
+                f"You are on v{__version__}. The download is about {size_mb:.0f} MB.\n"
+                "SmuggyConverter will restart to finish installing."
+            )
+            box.setIcon(QMessageBox.Information)
+            box.setStandardButtons(QMessageBox.NoButton)
+            update_btn = box.addButton("Update Now", QMessageBox.AcceptRole)
+            notes_btn = box.addButton("What's New", QMessageBox.ActionRole)
+            box.addButton("Later", QMessageBox.RejectRole)
+            box.setStyleSheet(self._toast_style())
+            box.exec()
 
-        clicked = box.clickedButton()
-        if clicked is notes_btn:
-            QDesktopServices.openUrl(QUrl(info["notes_url"]))
-            return
-        if clicked is not update_btn:
-            logger.info("User deferred update", extra={"version": info["version"]})
-            return
+            clicked = box.clickedButton()
+            if clicked is notes_btn:
+                QDesktopServices.openUrl(QUrl(info["notes_url"]))
+                continue
+            if clicked is not update_btn:
+                logger.info("User deferred update", extra={"version": info["version"]})
+                return
+            break
 
         # Fail here rather than after transferring 140 MB.
         reason = updater.blocked_reason(info.get("size", 0))

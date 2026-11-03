@@ -32,6 +32,11 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("BPM", rendered)
         self.assertIn("macOS", rendered)
 
+    def test_v151_notes_describe_the_update_prompt_fix(self):
+        notes = release_notes.get_notes("1.5.1")
+
+        self.assertTrue(any("What’s New" in entry for entry in notes["FIXED"]))
+
     def test_ffmpeg_notice_includes_its_gpl_and_source_reference(self):
         root = Path(__file__).parents[1]
         notice = (root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")

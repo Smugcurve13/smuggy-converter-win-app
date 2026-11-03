@@ -74,6 +74,32 @@ class WindowProgressTests(unittest.TestCase):
 
             popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
             window.close()
+
+    def test_whats_new_keeps_update_prompt_available(self):
+        info = {"version": "1.5.1", "url": "https://example.test/update.zip", "size": 0,
+                "notes_url": "https://example.test/notes"}
+        update_one, notes_one, later_one = object(), object(), object()
+        update_two, notes_two, later_two = object(), object(), object()
+        box = MagicMock()
+        box.addButton.side_effect = [
+            update_one, notes_one, later_one, update_two, notes_two, later_two,
+        ]
+        box.clickedButton.side_effect = [notes_one, update_two]
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            converter_window, "load_settings", return_value={"output_folder": tmp}
+        ), patch.object(converter_window, "QMessageBox", return_value=box) as message_box, patch.object(
+            converter_window.QDesktopServices, "openUrl"
+        ) as open_url, patch.object(converter_window.updater, "blocked_reason", return_value=None):
+            window = converter_window.ConverterWindow()
+            window._start_update_download = MagicMock()
+            window._on_update_available(info)
+
+        self.assertEqual(message_box.call_count, 2)
+        open_url.assert_called_once()
+        window._start_update_download.assert_called_once_with(info)
+        window.close()
+
     def test_instagram_retry_preserves_the_selected_crop(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \

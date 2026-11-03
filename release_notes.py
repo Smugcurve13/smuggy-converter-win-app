@@ -4,6 +4,13 @@ import argparse
 
 
 NOTES = {
+    "1.5.1": {
+        "NEW": [],
+        "CHANGED": [],
+        "FIXED": [
+            "Choosing What’s New from the update prompt now keeps the update prompt available when you return.",
+        ],
+    },
     "1.5.0": {
         "NEW": [
             "Analyze Music scans a local folder for estimated BPM, musical key, and Camelot key, then exports the results as CSV.",
