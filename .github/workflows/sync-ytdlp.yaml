@@ -65,6 +65,8 @@ jobs:
         if: steps.update.outputs.version != ''
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes ffmpeg libegl1
           python -m pip install -r requirements.txt
           QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
           python tests/test_format_selection.py
