@@ -75,6 +75,23 @@ def _is_youtube_playlist_url(url: str) -> bool:
     )
 
 
+def _open_notes(url: str) -> None:
+    QDesktopServices.openUrl(QUrl(url))
+
+
+class _UpdateMessageBox(QMessageBox):
+    def __init__(self, notes_url: str, parent=None):
+        super().__init__(parent)
+        self.notes_url = notes_url
+        self.notes_button = None
+
+    def done(self, result):
+        if self.clickedButton() is self.notes_button:
+            _open_notes(self.notes_url)
+            return
+        super().done(result)
+
+
 class ConverterWindow(QMainWindow):
     def _current_mode(self) -> str:
         checked = self.mode_group.checkedButton()
@@ -175,30 +192,24 @@ class ConverterWindow(QMainWindow):
 
     def _on_update_available(self, info: dict) -> None:
         size_mb = info.get("size", 0) / 1_000_000
-        while True:
-            box = QMessageBox(self)
-            box.setWindowTitle("Update Available")
-            box.setText(f"SmuggyConverter {info['version']} is available.")
-            box.setInformativeText(
-                f"You are on v{__version__}. The download is about {size_mb:.0f} MB.\n"
-                "SmuggyConverter will restart to finish installing."
-            )
-            box.setIcon(QMessageBox.Information)
-            box.setStandardButtons(QMessageBox.NoButton)
-            update_btn = box.addButton("Update Now", QMessageBox.AcceptRole)
-            notes_btn = box.addButton("What's New", QMessageBox.ActionRole)
-            box.addButton("Later", QMessageBox.RejectRole)
-            box.setStyleSheet(self._toast_style())
-            box.exec()
+        box = _UpdateMessageBox(info["notes_url"], self)
+        box.setWindowTitle("Update Available")
+        box.setText(f"SmuggyConverter {info['version']} is available.")
+        box.setInformativeText(
+            f"You are on v{__version__}. The download is about {size_mb:.0f} MB.\n"
+            "SmuggyConverter will restart to finish installing."
+        )
+        box.setIcon(QMessageBox.Information)
+        box.setStandardButtons(QMessageBox.NoButton)
+        update_btn = box.addButton("Update Now", QMessageBox.AcceptRole)
+        box.notes_button = box.addButton("What's New", QMessageBox.ActionRole)
+        box.addButton("Later", QMessageBox.RejectRole)
+        box.setStyleSheet(self._toast_style())
+        box.exec()
 
-            clicked = box.clickedButton()
-            if clicked is notes_btn:
-                QDesktopServices.openUrl(QUrl(info["notes_url"]))
-                continue
-            if clicked is not update_btn:
-                logger.info("User deferred update", extra={"version": info["version"]})
-                return
-            break
+        if box.clickedButton() is not update_btn:
+            logger.info("User deferred update", extra={"version": info["version"]})
+            return
 
         # Fail here rather than after transferring 140 MB.
         reason = updater.blocked_reason(info.get("size", 0))

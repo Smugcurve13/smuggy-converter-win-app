@@ -4,6 +4,13 @@ import argparse
 
 
 NOTES = {
+    "1.5.2": {
+        "NEW": [],
+        "CHANGED": [],
+        "FIXED": [
+            "The update prompt now stays open when you choose What’s New, so Update Now remains available.",
+        ],
+    },
     "1.5.1": {
         "NEW": [],
         "CHANGED": [],

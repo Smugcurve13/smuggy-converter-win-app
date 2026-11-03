@@ -37,6 +37,11 @@ class ReleaseNotesTests(unittest.TestCase):
 
         self.assertTrue(any("What’s New" in entry for entry in notes["FIXED"]))
 
+    def test_v152_notes_describe_the_persistent_update_prompt(self):
+        notes = release_notes.get_notes("1.5.2")
+
+        self.assertTrue(any("stays open" in entry.lower() for entry in notes["FIXED"]))
+
     def test_ffmpeg_notice_includes_its_gpl_and_source_reference(self):
         root = Path(__file__).parents[1]
         notice = (root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")

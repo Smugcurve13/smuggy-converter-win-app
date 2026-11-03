@@ -75,30 +75,20 @@ class WindowProgressTests(unittest.TestCase):
             popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
             window.close()
 
-    def test_whats_new_keeps_update_prompt_available(self):
-        info = {"version": "1.5.1", "url": "https://example.test/update.zip", "size": 0,
-                "notes_url": "https://example.test/notes"}
-        update_one, notes_one, later_one = object(), object(), object()
-        update_two, notes_two, later_two = object(), object(), object()
-        box = MagicMock()
-        box.addButton.side_effect = [
-            update_one, notes_one, later_one, update_two, notes_two, later_two,
-        ]
-        box.clickedButton.side_effect = [notes_one, update_two]
+    def test_whats_new_button_does_not_close_update_prompt(self):
+        with patch.object(converter_window, "_open_notes") as open_notes, patch.object(
+            converter_window.QMessageBox, "done"
+        ) as close_dialog:
+            box = converter_window._UpdateMessageBox("https://example.test/notes")
+            notes_button = box.addButton("What's New", converter_window.QMessageBox.ActionRole)
+            box.notes_button = notes_button
+            with patch.object(box, "clickedButton", return_value=notes_button):
+                box.done(0)
 
-        with tempfile.TemporaryDirectory() as tmp, patch.object(
-            converter_window, "load_settings", return_value={"output_folder": tmp}
-        ), patch.object(converter_window, "QMessageBox", return_value=box) as message_box, patch.object(
-            converter_window.QDesktopServices, "openUrl"
-        ) as open_url, patch.object(converter_window.updater, "blocked_reason", return_value=None):
-            window = converter_window.ConverterWindow()
-            window._start_update_download = MagicMock()
-            window._on_update_available(info)
-
-        self.assertEqual(message_box.call_count, 2)
-        open_url.assert_called_once()
-        window._start_update_download.assert_called_once_with(info)
-        window.close()
+        close_dialog.assert_not_called()
+        open_notes.assert_called_once_with("https://example.test/notes")
+        box.hide()
+        box.deleteLater()
 
     def test_instagram_retry_preserves_the_selected_crop(self):
         with tempfile.TemporaryDirectory() as tmp:
