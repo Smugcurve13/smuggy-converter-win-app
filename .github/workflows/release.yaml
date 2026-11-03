@@ -44,7 +44,7 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: |
-          $env:QT_QPA_PLATFORM = "minimal"
+          $env:QT_QPA_PLATFORM = "offscreen"
           python -m unittest discover -s tests -v
           python tests/test_format_selection.py
           python playlist.py

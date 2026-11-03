@@ -1,5 +1,4 @@
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +62,7 @@ class WindowProgressTests(unittest.TestCase):
     def test_video_crop_is_visible_for_mp4_and_log_button_opens_current_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch.object(converter_window.platform, "system", return_value="Linux"), \
                  patch.object(converter_window.subprocess, "Popen") as popen:
                 window = converter_window.ConverterWindow()
                 window.format_combo.setCurrentIndex(1)
@@ -72,8 +72,7 @@ class WindowProgressTests(unittest.TestCase):
                 self.assertEqual(window.open_log_btn.text(), "Open Log")
                 window._open_log()
 
-            command = "open" if sys.platform == "darwin" else "xdg-open"
-            popen.assert_called_once_with([command, str(converter_window.current_log_path)])
+            popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
             window.close()
     def test_instagram_retry_preserves_the_selected_crop(self):
         with tempfile.TemporaryDirectory() as tmp:
