@@ -1,0 +1,110 @@
+name: Sync yt-dlp
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Check only; do not commit, tag, or publish"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: sync-ytdlp
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Check upstream release
+        id: upstream
+        run: |
+          set -euo pipefail
+          latest=$(python scripts/sync_ytdlp_release.py | sed -n 's/.* -> //p')
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Recover an unpublished tag
+        id: recovery
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v$(python -c 'from version import __version__; print(__version__)')"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null && ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply core update
+        id: update
+        if: steps.upstream.outputs.version != '' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+        env:
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          set -euo pipefail
+          python scripts/sync_ytdlp_release.py --upstream-version "$UPSTREAM_VERSION" --apply
+          echo "version=$(python -c 'from version import __version__; print(__version__)')" >> "$GITHUB_OUTPUT"
+
+      - name: Test updated core
+        if: steps.update.outputs.version != ''
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
+          python tests/test_format_selection.py
+          python playlist.py
+          python config.py
+          python updater.py
+          python -m compileall -q -x '.*/\.venv/.*' .
+          git diff --check
+
+      - name: Commit and tag release
+        id: release
+        if: steps.update.outputs.version != ''
+        env:
+          VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add requirements.txt version.py release_notes.py
+          git commit -m "chore: sync yt-dlp $VERSION"
+          tag="v$VERSION"
+          git tag -a "$tag" -m "SmuggyConverter $tag"
+          # GITHUB_TOKEN tag pushes do not trigger workflows; dispatch below is intentional.
+          git push origin HEAD:main "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed app release
+        if: (github.event_name != 'workflow_dispatch' || !inputs.dry_run) && (steps.release.outputs.tag != '' || steps.recovery.outputs.tag != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag || steps.recovery.outputs.tag }}
+        run: |
+          set -euo pipefail
+          started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run release.yaml --ref "$TAG"
+          for attempt in {1..12}; do
+            run_id=$(gh run list --workflow release.yaml --branch "$TAG" --event workflow_dispatch --limit 20 --json databaseId,createdAt --jq ".[] | select(.createdAt >= \"$started_at\") | .databaseId" | head -1)
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          [ -n "$run_id" ] || { echo "::error::Release workflow did not start"; exit 1; }
+          gh run watch "$run_id" --exit-status
