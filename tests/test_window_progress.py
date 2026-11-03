@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,7 +72,8 @@ class WindowProgressTests(unittest.TestCase):
                 self.assertEqual(window.open_log_btn.text(), "Open Log")
                 window._open_log()
 
-            popen.assert_called_once_with(["xdg-open", str(converter_window.current_log_path)])
+            command = "open" if sys.platform == "darwin" else "xdg-open"
+            popen.assert_called_once_with([command, str(converter_window.current_log_path)])
             window.close()
     def test_instagram_retry_preserves_the_selected_crop(self):
         with tempfile.TemporaryDirectory() as tmp:
