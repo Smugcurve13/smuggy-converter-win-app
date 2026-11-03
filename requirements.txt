@@ -17,4 +17,4 @@ PySide6_Essentials==6.10.1
 pywin32-ctypes==0.2.3
 setuptools==80.10.2
 shiboken6==6.10.1
-yt-dlp==2026.8.19
+yt-dlp==2026.10.26
