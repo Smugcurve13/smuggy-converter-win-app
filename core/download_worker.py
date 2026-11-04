@@ -3,7 +3,10 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from playlist import extract_video_info_from_array
-from downloader import DownloadCancelled, DownloadFailed, download_and_convert, download_selected
+from downloader import (
+    DownloadCancelled, DownloadFailed, download_and_convert, download_selected,
+    download_thumbnail, download_selected_thumbnails,
+)
 from spotify import _track_name, download_spotify_csv, read_exportify_csv
 from instagram import download_instagram
 
@@ -94,6 +97,38 @@ class DownloadWorker(QThread):
                     msg += f", {len(skipped)} item(s) had no video"
                 state = "Completed with issues" if skipped else "Completed"
                 self._finish(state, msg, done[0], done, skipped, skipped)
+            elif "thumbnail" in self.mode:
+                if "playlist" in self.mode:
+                    videos = extract_video_info_from_array(self.selected_videos)
+                    try:
+                        done, failed_items = download_selected_thumbnails(
+                            self.playlist_title, videos, target_dir=self.output_dir,
+                            progress_callback=self.progress.emit, status_callback=self._status,
+                            is_cancelled=self.is_cancelled,
+                        )
+                    except DownloadCancelled as cancelled:
+                        retry_urls = {url for _, url in cancelled.retry_items}
+                        retry_rows = [video for video in self.selected_videos if video[0] in retry_urls]
+                        raise DownloadCancelled(cancelled.saved, retry_rows) from cancelled
+                    failed = [title for title, _ in failed_items]
+                    retry_items = [video for video in self.selected_videos if video[0] in {url for _, url in failed_items}]
+                    label = self.playlist_title
+                else:
+                    saved = download_thumbnail(
+                        self.url, self.output_dir, progress_callback=self.progress.emit,
+                        status_callback=lambda stage, name: self._status(stage, 1, 1, name),
+                        is_cancelled=self.is_cancelled,
+                    )
+                    done, failed, retry_items, label = [saved], [], [], saved
+                if self.is_cancelled():
+                    raise DownloadCancelled(done, retry_items)
+                if not done:
+                    self._finish("Failed", f"No thumbnails could be downloaded ({len(failed)} failed)", label, [], failed, retry_items)
+                    return
+                msg = f"{len(done)} thumbnail{'s' if len(done) != 1 else ''} saved"
+                if failed:
+                    msg += f", {len(failed)} failed: " + ", ".join(failed[:3])
+                self._finish("Completed with issues" if failed else "Completed", msg, label, done, failed, retry_items)
             elif "playlist" in self.mode:
                 videos_dict = extract_video_info_from_array(self.selected_videos)
                 playlist_result = download_selected(

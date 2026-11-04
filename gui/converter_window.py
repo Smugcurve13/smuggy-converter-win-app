@@ -104,16 +104,23 @@ class ConverterWindow(QMainWindow):
 
         mode = self._current_mode()
         spotify = "spotify" in mode
+        thumbnail = "thumbnail" in mode
 
         # Spotify takes a CSV instead of a URL, and is always MP3.
-        for w in (self.url_label, self.url_input, self.remember_url_checkbox, self.format_label, self.format_combo):
+        for w in (self.url_label, self.url_input, self.remember_url_checkbox):
             w.setVisible(not spotify)
+        for w in (self.format_label, self.format_combo, self.quality_label, self.quality_combo):
+            w.setVisible(not spotify and not thumbnail)
         for w in (self.csv_label, self.csv_row):
             w.setVisible(spotify)
         self.spotify_help_btn.setVisible(spotify)
 
         if spotify:
             self.accent.setText("from Spotify")
+        elif thumbnail:
+            self.url_label.setText("YouTube Video or Playlist URL:")
+            self.url_input.setPlaceholderText("https://www.youtube.com/watch?v=... or ...playlist?list=...")
+            self.accent.setText("thumbnails")
         elif "instagram" in mode:
             self.url_label.setText("Instagram Post or Reel URL:")
             self.url_input.setPlaceholderText("https://www.instagram.com/reel/...")
@@ -130,9 +137,13 @@ class ConverterWindow(QMainWindow):
         # Unconditional: Spotify used to skip this, which left video resolutions
         # sitting under the "Audio Quality:" label.
         self._update_quality_options()
-        crop_visible = not spotify and self._current_format() == "mp4"
+        crop_visible = not spotify and not thumbnail and self._current_format() == "mp4"
         self.crop_label.setVisible(crop_visible)
         self.crop_combo.setVisible(crop_visible)
+        if hasattr(self, "convert_btn"):
+            self.original_button_text = "Download Thumbnail(s)" if thumbnail else "Convert and Download"
+            if not (getattr(self, "worker", None) and self.worker.isRunning()):
+                self.convert_btn.setText(self.original_button_text)
 
     def __init__(self) -> None:
         super().__init__()
@@ -447,7 +458,7 @@ class ConverterWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         self.mode_group.buttonClicked.connect(self._on_mode_changed)
         
-        for text in ["YT Video", "YT Playlist", "Spotify", "Instagram"]:
+        for text in ["YT Video", "YT Playlist", "YT Thumbnail", "Spotify", "Instagram"]:
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setObjectName({"Spotify": "modeSpotify", "Instagram": "modeInstagram"}.get(text, "mode"))
@@ -802,6 +813,37 @@ class ConverterWindow(QMainWindow):
 
         fmt = self._current_format()
 
+        if "thumbnail" in mode:
+            if _is_youtube_playlist_url(url):
+                try:
+                    playlist_title, selected_videos = extract_playlist_info(url)
+                except Exception as exc:
+                    logger.error("Failed to extract thumbnail playlist", extra={"error": str(exc)})
+                    self._show_toast(f"Failed to extract playlist: {exc}", False)
+                    return
+                if not selected_videos:
+                    self._show_toast("This playlist has no available videos", False)
+                    return
+                mode = "yt thumbnail playlist"
+                self._start_loading(show_progress=True)
+                self.worker = DownloadWorker(
+                    mode, url, "thumbnail", None, self.output_dir,
+                    selected_videos=selected_videos, playlist_title=playlist_title,
+                )
+            else:
+                try:
+                    url = _normalise_youtube_single_url(url)
+                except ValueError as exc:
+                    self._show_toast(str(exc), False)
+                    return
+                self._start_loading(show_progress=True)
+                self.worker = DownloadWorker(mode, url, "thumbnail", None, self.output_dir)
+            self.worker.progress.connect(self._on_download_progress)
+            self.worker.status.connect(self._on_download_status)
+            self.worker.finished.connect(self._on_download_finished)
+            self.worker.start()
+            return
+
         if instagram:
             if "instagram.com" not in url:
                 self._show_toast("That doesn't look like an Instagram URL", False)
@@ -956,7 +998,12 @@ class ConverterWindow(QMainWindow):
         if not self.worker or not self.output_dir:
             return
         previous = self.worker
-        if "playlist" in previous.mode:
+        if "thumbnail" in previous.mode:
+            worker = DownloadWorker(
+                previous.mode, previous.url, "thumbnail", None, self.output_dir,
+                selected_videos=result["retry_items"], playlist_title=previous.playlist_title,
+            )
+        elif "playlist" in previous.mode:
             worker = DownloadWorker(
                 previous.mode, previous.url, previous.fmt, previous.quality,
                 self.output_dir, selected_videos=result["retry_items"],
@@ -973,6 +1020,7 @@ class ConverterWindow(QMainWindow):
                 previous.mode, previous.url, previous.fmt, previous.quality,
                 self.output_dir, retry_items=result["retry_items"], crop=previous.crop,
             )
+
         else:
             return
         self._start_loading(show_progress=True)

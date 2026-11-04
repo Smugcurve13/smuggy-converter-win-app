@@ -12,6 +12,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 |---|---|---|
 | **YouTube video** | MP3, MP4 | Single URL |
 | **YouTube playlist** | MP3, MP4 | Pick which videos to download from a searchable list |
+| **YouTube thumbnail** | JPG, WebP, PNG | Single video or every available video in a playlist |
 | **Spotify playlist** | MP3 | Via an [exportify.net](https://exportify.net) CSV — each track is matched on YouTube and tagged with Spotify's own metadata |
 | **Instagram** | MP3, MP4 | Public reels and posts. Carousels save every video |
 
@@ -49,10 +50,14 @@ right-click the app → **Open**, or run
 
 ## Using it
 
-1. Pick a mode: **YT Video**, **YT Playlist**, **Spotify** or **Instagram**.
+1. Pick a mode: **YT Video**, **YT Playlist**, **YT Thumbnail**, **Spotify** or **Instagram**.
 2. Set the output folder (asked once on first run, changeable any time).
 3. Paste a URL — or for Spotify, browse to your Exportify CSV.
 4. Choose format and quality, then **Convert and Download**.
+
+### YouTube thumbnails
+
+Choose **YT Thumbnail** and paste either a video URL or a playlist URL. A video saves its source thumbnail in the output folder. A playlist downloads every available video's thumbnail into a folder named after that playlist; duplicate video titles receive distinct filenames.
 
 ### Analyze Music
 
