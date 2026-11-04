@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from urllib.request import Request, urlopen
 
 import yt_dlp
 from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
@@ -175,6 +176,100 @@ def _format_opts(fmt, quality, source_metadata=True):
     raise ValueError(f"Invalid format: {fmt}")
 
 
+def _thumbnail_suffix(url: str) -> str:
+    suffix = Path(urlsplit(url).path).suffix.lower()
+    return suffix if suffix in {".jpg", ".jpeg", ".png", ".webp"} else ".jpg"
+
+
+def _distinct_output_title(title: str, count: int) -> str:
+    """Keep a duplicate suffix inside sanitize_filename's 100-character limit."""
+    base = sanitize_filename(title) or "download"
+    suffix = "" if count == 1 else f" ({count})"
+    return f"{base[:100 - len(suffix)].rstrip()}{suffix}"
+
+
+def download_thumbnail(url, target_dir=None, progress_callback=None, status_callback=None,
+                       is_cancelled=None, title=None):
+    """Save the source's best thumbnail without downloading its media."""
+    if is_cancelled and is_cancelled():
+        raise DownloadCancelled()
+    base_dir = Path(target_dir or MEDIA_DIR)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    with yt_dlp.YoutubeDL(_base_opts()) as ydl:
+        info = ydl.extract_info(url, download=False)
+    thumbnail_url = info.get("thumbnail")
+    if not thumbnail_url:
+        raise RuntimeError("YouTube did not provide a thumbnail for this video")
+    title = title or info.get("title", "thumbnail")
+    safe_title = sanitize_filename(title) or "thumbnail"
+    filename = f"{safe_title}{_thumbnail_suffix(thumbnail_url)}"
+    destination = base_dir / filename
+    temporary = destination.with_suffix(destination.suffix + ".part")
+    if status_callback:
+        status_callback("Downloading", title)
+    request = Request(thumbnail_url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urlopen(request) as response, temporary.open("wb") as output:
+            total = int(response.headers.get("Content-Length", 0) or 0)
+            saved = 0
+            while chunk := response.read(64 * 1024):
+                if is_cancelled and is_cancelled():
+                    raise DownloadCancelled()
+                output.write(chunk)
+                saved += len(chunk)
+                if total and progress_callback:
+                    progress_callback(min(100, int(saved / total * 100)))
+        temporary.replace(destination)
+    except DownloadCancelled:
+        temporary.unlink(missing_ok=True)
+        raise
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    if progress_callback:
+        progress_callback(100)
+    logger.info("Thumbnail saved", extra={"url": url, "path": str(destination)})
+    return filename
+
+
+def download_selected_thumbnails(playlist_title, videos, target_dir=None, progress_callback=None,
+                                 status_callback=None, is_cancelled=None):
+    """Download every selected playlist thumbnail into its playlist folder."""
+    playlist_dir = Path(target_dir or MEDIA_DIR) / (sanitize_filename(playlist_title) or "playlist")
+    playlist_dir.mkdir(parents=True, exist_ok=True)
+    done, failed, used_titles = [], [], {}
+    items = list(videos)
+    total = len(items)
+    for index, (title, url) in enumerate(items, start=1):
+        if is_cancelled and is_cancelled():
+            raise DownloadCancelled(done, failed + items[index - 1:])
+        key = (sanitize_filename(title) or "thumbnail").casefold()
+        count = used_titles.get(key, 0)
+        while True:
+            count += 1
+            output_title = _distinct_output_title(title, count)
+            if not any(playlist_dir.glob(f"{output_title}.*")):
+                break
+        used_titles[key] = count
+        try:
+            saved = download_thumbnail(
+                url, playlist_dir, title=output_title, is_cancelled=is_cancelled,
+                progress_callback=progress_callback,
+                status_callback=(
+                    lambda stage, name, item=index: status_callback(stage, item, total, name)
+                ) if status_callback else None,
+            )
+            done.append(saved)
+        except DownloadCancelled:
+            raise DownloadCancelled(done, failed + items[index - 1:])
+        except Exception as exc:
+            logger.error("Playlist thumbnail failed", extra={"title": title, "url": url, "error": str(exc)})
+            failed.append((title, url))
+        if progress_callback:
+            progress_callback(int(index / total * 100) if total else 100)
+    return done, failed
+
+
 def download_and_convert(url, fmt, quality, target_dir=None, progress_callback=None, status_callback=None,
                          is_cancelled=None, title=None, source_metadata=True, throttle=False,
                          download_archive=None, crop="Original"):
@@ -250,7 +345,7 @@ def download_selected(playlist_title, videos_dict, fmt, quality, target_dir=None
             raise DownloadCancelled(done, failed + items[idx - 1:])
         title_key = (sanitize_filename(title) or "download").casefold()
         used_titles[title_key] = used_titles.get(title_key, 0) + 1
-        output_title = title if used_titles[title_key] == 1 else f"{title} ({used_titles[title_key]})"
+        output_title = _distinct_output_title(title, used_titles[title_key])
         if _archive_contains_url(archive, url):
             skipped.append(title)
         else:

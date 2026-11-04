@@ -57,6 +57,23 @@ class ProgressCancellationTests(unittest.TestCase):
         self.assertEqual(emitted, [(False, "Cancelled — 1 saved", "Mix")])
         self.assertEqual(worker.result["retry_items"], [["one", "One", "1:00"]])
 
+    def test_thumbnail_playlist_cancellation_keeps_original_rows_for_retry(self):
+        import core.download_worker as worker_module
+
+        selected = [["one", "One", "1:00"], ["two", "Two", "1:00"]]
+        worker = worker_module.DownloadWorker(
+            "yt thumbnail playlist", "", "thumbnail", None, Path("."),
+            selected_videos=selected, playlist_title="Mix",
+        )
+        with patch.object(
+            worker_module, "download_selected_thumbnails",
+            side_effect=downloader.DownloadCancelled(["One.jpg"], [("Two", "two")]),
+        ):
+            worker.run()
+
+        self.assertEqual(worker.result["state"], "Cancelled")
+        self.assertEqual(worker.result["retry_items"], [selected[1]])
+
     def test_worker_reports_partial_playlist_result_with_retry_subset(self):
         import core.download_worker as worker_module
 

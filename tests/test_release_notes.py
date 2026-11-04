@@ -32,6 +32,12 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("BPM", rendered)
         self.assertIn("macOS", rendered)
 
+    def test_thumbnail_alpha_notes_render(self):
+        notes = release_notes.get_notes("1.6.0-alpha.1")
+
+        self.assertTrue(any("thumbnail" in entry.lower() for entry in notes["NEW"]))
+        self.assertIn("playlist", release_notes.render_markdown("1.6.0-alpha.1").lower())
+
     def test_v151_notes_describe_the_update_prompt_fix(self):
         notes = release_notes.get_notes("1.5.1")
 
