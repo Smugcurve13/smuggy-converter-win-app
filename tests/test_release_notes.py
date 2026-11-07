@@ -38,6 +38,12 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertTrue(any("thumbnail" in entry.lower() for entry in notes["NEW"]))
         self.assertIn("playlist", release_notes.render_markdown("1.6.0-alpha.1").lower())
 
+    def test_v1_6_0_notes_cover_thumbnail_and_audio_trim(self):
+        notes = release_notes.get_notes("1.6.0")
+
+        self.assertTrue(any("thumbnail" in entry.lower() for entry in notes["NEW"]))
+        self.assertTrue(any("trim" in entry.lower() for entry in notes["NEW"]))
+
     def test_v151_notes_describe_the_update_prompt_fix(self):
         notes = release_notes.get_notes("1.5.1")
 

@@ -20,6 +20,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 - **MP4 up to 4K** — 2160p, 1440p, 1080p, 720p, 480p. Files are remuxed rather than
   re-encoded, so a download finishes in seconds instead of minutes.
 - **Analyze local music** — choose any folder to estimate BPM, musical key, and Camelot key, then export a CSV. It never renames, moves, or modifies files.
+- **Trim local audio** — choose an audio file, enter start and end times in seconds, and save a separate trimmed MP3 copy. The original stays unchanged.
 - **FFmpeg is bundled** on Windows and macOS releases; nothing to install.
 - **Updates itself** — checks GitHub on launch and, if you say yes, downloads and
   installs the new version in place, then restarts. Nothing to re-download by hand.
@@ -62,6 +63,10 @@ Choose **YT Thumbnail** and paste either a video URL or a playlist URL. A video 
 ### Analyze Music
 
 Click **Analyze Music** beside the output folder, or choose another local folder. The app estimates BPM, musical key, and Camelot key for supported audio files and can export a CSV for review. These are estimates, so validate tracks you plan to use in a DJ set. The tool does not rename, move, tag, or upload files.
+
+### Trim Audio
+
+Click **Trim Audio** beside the output folder, choose a local audio file, then enter the start and end time in seconds. SmuggyConverter writes a new file named `Track (trimmed).mp3` and never overwrites the original.
 
 ### Spotify mode
 

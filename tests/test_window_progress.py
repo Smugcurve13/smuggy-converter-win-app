@@ -59,6 +59,18 @@ class WindowProgressTests(unittest.TestCase):
             dialog.exec.assert_called_once()
             window.close()
 
+    def test_trim_audio_opens_with_the_selected_output_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \
+                 patch("gui.converter_window.AudioTrimDialog") as dialog_class:
+                dialog = dialog_class.return_value
+                window = converter_window.ConverterWindow()
+                window._open_audio_trim()
+
+            dialog_class.assert_called_once_with(Path(tmp), window)
+            dialog.exec.assert_called_once()
+            window.close()
+
     def test_video_crop_is_visible_for_mp4_and_log_button_opens_current_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(converter_window, "load_settings", return_value={"output_folder": tmp}), \

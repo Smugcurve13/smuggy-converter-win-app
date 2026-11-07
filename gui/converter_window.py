@@ -32,6 +32,7 @@ from gui.spinner_widget import SpinnerWidget
 from gui.playlist_selection_dialog import PlaylistSelectionDialog
 from gui.welcome_dialog import WelcomeDialog
 from gui.music_analysis_dialog import MusicAnalysisDialog
+from gui.audio_trim_dialog import AudioTrimDialog
 from core.download_worker import DownloadWorker
 from core.update_worker import UpdateCheckWorker, UpdateDownloadWorker
 
@@ -492,6 +493,9 @@ class ConverterWindow(QMainWindow):
         analyze_music_btn = QPushButton("Analyze Music")
         analyze_music_btn.setMinimumHeight(42)
         analyze_music_btn.clicked.connect(self._open_music_analysis)
+        trim_audio_btn = QPushButton("Trim Audio")
+        trim_audio_btn.setMinimumHeight(42)
+        trim_audio_btn.clicked.connect(self._open_audio_trim)
         open_log_btn = QPushButton("Open Log")
         open_log_btn.setMinimumHeight(42)
         open_log_btn.clicked.connect(self._open_log)
@@ -502,6 +506,7 @@ class ConverterWindow(QMainWindow):
         output_row.addWidget(browse_btn)
         output_row.addWidget(open_output_dir_btn)
         output_row.addWidget(analyze_music_btn)
+        output_row.addWidget(trim_audio_btn)
         output_row.addWidget(open_log_btn)
 
     # URL input
@@ -649,6 +654,12 @@ class ConverterWindow(QMainWindow):
             self._show_toast("Choose an output folder before analyzing music", False)
             return
         MusicAnalysisDialog(self.output_dir, self).exec()
+
+    def _open_audio_trim(self) -> None:
+        if not self.output_dir:
+            self._show_toast("Choose an output folder before trimming audio", False)
+            return
+        AudioTrimDialog(self.output_dir, self).exec()
 
     def _open_log(self) -> None:
         path = str(current_log_path)
