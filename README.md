@@ -12,6 +12,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 |---|---|---|
 | **YouTube video** | MP3, MP4 | Single URL |
 | **YouTube playlist** | MP3, MP4 | Pick which videos to download from a searchable list |
+| **YouTube thumbnail** | JPG, WebP, PNG | Single video or every available video in a playlist |
 | **Spotify playlist** | MP3 | Via an [exportify.net](https://exportify.net) CSV — each track is matched on YouTube and tagged with Spotify's own metadata |
 | **Instagram** | MP3, MP4 | Public reels and posts. Carousels save every video |
 
@@ -19,6 +20,7 @@ Runs on **Windows** and **macOS (Apple Silicon)**.
 - **MP4 up to 4K** — 2160p, 1440p, 1080p, 720p, 480p. Files are remuxed rather than
   re-encoded, so a download finishes in seconds instead of minutes.
 - **Analyze local music** — choose any folder to estimate BPM, musical key, and Camelot key, then export a CSV. It never renames, moves, or modifies files.
+- **Trim local audio** — choose an audio file, enter start and end times in seconds, and save a separate trimmed MP3 copy. The original stays unchanged.
 - **FFmpeg is bundled** on Windows and macOS releases; nothing to install.
 - **Updates itself** — checks GitHub on launch and, if you say yes, downloads and
   installs the new version in place, then restarts. Nothing to re-download by hand.
@@ -49,14 +51,22 @@ right-click the app → **Open**, or run
 
 ## Using it
 
-1. Pick a mode: **YT Video**, **YT Playlist**, **Spotify** or **Instagram**.
+1. Pick a mode: **YT Video**, **YT Playlist**, **YT Thumbnail**, **Spotify** or **Instagram**.
 2. Set the output folder (asked once on first run, changeable any time).
 3. Paste a URL — or for Spotify, browse to your Exportify CSV.
 4. Choose format and quality, then **Convert and Download**.
 
+### YouTube thumbnails
+
+Choose **YT Thumbnail** and paste either a video URL or a playlist URL. A video saves its source thumbnail in the output folder. A playlist downloads every available video's thumbnail into a folder named after that playlist; duplicate video titles receive distinct filenames.
+
 ### Analyze Music
 
 Click **Analyze Music** beside the output folder, or choose another local folder. The app estimates BPM, musical key, and Camelot key for supported audio files and can export a CSV for review. These are estimates, so validate tracks you plan to use in a DJ set. The tool does not rename, move, tag, or upload files.
+
+### Trim Audio
+
+Click **Trim Audio** beside the output folder, choose a local audio file, then enter the start and end time in seconds. SmuggyConverter writes a new file named `Track (trimmed).mp3` and never overwrites the original.
 
 ### Spotify mode
 

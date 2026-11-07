@@ -23,7 +23,7 @@ class WelcomeDialog(QDialog):
         if onboarding:
             getting_started = QLabel(
                 "<b>Getting Started</b><br>"
-                "1. Choose YouTube Video, YouTube Playlist, Spotify, or Instagram.<br>"
+                "1. Choose YouTube Video, YouTube Playlist, YouTube Thumbnail, Spotify, or Instagram.<br>"
                 "2. Confirm the output folder, format, and quality.<br>"
                 "3. Paste a URL or choose an Exportify CSV, then start.<br><br>"
                 "Your normal choices are remembered. Playlist downloads can resume, and Spotify uses an Exportify CSV."

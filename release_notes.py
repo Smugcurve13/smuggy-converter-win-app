@@ -4,6 +4,21 @@ import argparse
 
 
 NOTES = {
+    "1.6.0": {
+        "NEW": [
+            "Download the original YouTube thumbnail for one video or every available video in a playlist.",
+            "Trim a local audio file to a new MP3 copy with start and end times in seconds; the original stays unchanged.",
+        ],
+        "CHANGED": [],
+        "FIXED": [],
+    },
+    "1.6.0-alpha.1": {
+        "NEW": [
+            "Download the original YouTube thumbnail for one video or every available video in a playlist.",
+        ],
+        "CHANGED": [],
+        "FIXED": [],
+    },
     "1.5.3": {
         "NEW": [],
         "CHANGED": [
