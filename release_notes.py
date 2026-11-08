@@ -4,6 +4,13 @@ import argparse
 
 
 NOTES = {
+    "1.6.1": {
+        "NEW": [],
+        "CHANGED": [],
+        "FIXED": [
+            "In-app updates now download through GitHub's release API instead of the browser CDN link, avoiding repeated 504 time-outs.",
+        ],
+    },
     "1.6.0": {
         "NEW": [
             "Download the original YouTube thumbnail for one video or every available video in a playlist.",

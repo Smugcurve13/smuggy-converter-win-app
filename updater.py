@@ -173,7 +173,7 @@ def check() -> dict | None:
     logger.info("Update available", extra={"latest": tag, "current": __version__})
     return {
         "version": tag,
-        "url": asset["browser_download_url"],
+        "url": asset["url"],
         "size": asset.get("size", 0),
         "notes_url": release.get("html_url", RELEASES_URL),
     }
@@ -243,7 +243,7 @@ def _fetch(url: str, dest: Path, resume: int, progress_callback, is_cancelled) -
     if resume:
         headers["Range"] = f"bytes={resume}-"
     req = urllib.request.Request(url, headers=headers)
-    # browser_download_url 302s to the release CDN; the default opener follows it.
+    # The release-asset API redirects to GitHub's asset host; the default opener follows it.
     with urllib.request.urlopen(req, timeout=_TIMEOUT, context=_ssl_context()) as resp:
         # A server that ignores Range answers 200 with the whole file, so the
         # bytes already on disk must be discarded rather than appended to.
