@@ -18,7 +18,8 @@ env:
 
   # Pinned static FFmpeg for Apple Silicon. Verified by checksum below — if you
   # bump the tag you MUST recompute both digests or the build will fail closed.
-  MAC_FFMPEG_BASE: https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1
+  MAC_FFMPEG_URL: https://api.github.com/repos/eugeneware/ffmpeg-static/releases/assets/316528311
+  MAC_FFPROBE_URL: https://api.github.com/repos/eugeneware/ffmpeg-static/releases/assets/316528892
   MAC_FFMPEG_SHA: 8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa
   MAC_FFPROBE_SHA: d986a8ec7b030899fe66a8a288ed809a3543338705a3ce178cfb85869c5d80be
 
@@ -103,8 +104,10 @@ jobs:
         run: |
           mkdir -p assets/ffmpeg/macos
           cd assets/ffmpeg/macos
-          curl -sSLf -o ffmpeg.gz  "$MAC_FFMPEG_BASE/ffmpeg-darwin-arm64.gz"
-          curl -sSLf -o ffprobe.gz "$MAC_FFMPEG_BASE/ffprobe-darwin-arm64.gz"
+          curl -sSLf --retry 4 --retry-all-errors --retry-delay 3 \
+            -H "Accept: application/octet-stream" -o ffmpeg.gz "$MAC_FFMPEG_URL"
+          curl -sSLf --retry 4 --retry-all-errors --retry-delay 3 \
+            -H "Accept: application/octet-stream" -o ffprobe.gz "$MAC_FFPROBE_URL"
           echo "$MAC_FFMPEG_SHA  ffmpeg.gz"   | shasum -a 256 -c -
           echo "$MAC_FFPROBE_SHA  ffprobe.gz" | shasum -a 256 -c -
           gunzip ffmpeg.gz ffprobe.gz

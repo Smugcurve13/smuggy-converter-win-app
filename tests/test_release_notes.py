@@ -49,6 +49,11 @@ class ReleaseNotesTests(unittest.TestCase):
 
         self.assertTrue(any("update" in entry.lower() and "github" in entry.lower() for entry in notes["FIXED"]))
 
+    def test_v1_6_2_notes_describe_the_update_download_fix(self):
+        notes = release_notes.get_notes("1.6.2")
+
+        self.assertTrue(any("update" in entry.lower() and "github" in entry.lower() for entry in notes["FIXED"]))
+
     def test_v151_notes_describe_the_update_prompt_fix(self):
         notes = release_notes.get_notes("1.5.1")
 
