@@ -4,6 +4,13 @@ import argparse
 
 
 NOTES = {
+    "1.6.3": {
+        "NEW": [],
+        "CHANGED": [],
+        "FIXED": [
+            "In-app updates now use GitHub's release API asset endpoint, avoiding the browser CDN 504 time-out.",
+        ],
+    },
     "1.6.2": {
         "NEW": [],
         "CHANGED": [],

@@ -101,13 +101,17 @@ jobs:
 
       # Fails closed on digest mismatch — these binaries ship to users.
       - name: Fetch and verify FFmpeg (arm64)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p assets/ffmpeg/macos
           cd assets/ffmpeg/macos
           curl -sSLf --retry 4 --retry-all-errors --retry-delay 3 \
-            -H "Accept: application/octet-stream" -o ffmpeg.gz "$MAC_FFMPEG_URL"
+            -H "Accept: application/octet-stream" -H "Authorization: Bearer $GH_TOKEN" \
+            -H "User-Agent: SmuggyConverter-CI" -o ffmpeg.gz "$MAC_FFMPEG_URL"
           curl -sSLf --retry 4 --retry-all-errors --retry-delay 3 \
-            -H "Accept: application/octet-stream" -o ffprobe.gz "$MAC_FFPROBE_URL"
+            -H "Accept: application/octet-stream" -H "Authorization: Bearer $GH_TOKEN" \
+            -H "User-Agent: SmuggyConverter-CI" -o ffprobe.gz "$MAC_FFPROBE_URL"
           echo "$MAC_FFMPEG_SHA  ffmpeg.gz"   | shasum -a 256 -c -
           echo "$MAC_FFPROBE_SHA  ffprobe.gz" | shasum -a 256 -c -
           gunzip ffmpeg.gz ffprobe.gz
