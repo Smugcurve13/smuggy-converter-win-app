@@ -4,6 +4,13 @@ import argparse
 
 
 NOTES = {
+    "1.6.4": {
+        "NEW": [],
+        "CHANGED": [
+            "Updated yt-dlp core to v2026.11.23.",
+        ],
+        "FIXED": [],
+    },
     "1.6.3": {
         "NEW": [],
         "CHANGED": [],
